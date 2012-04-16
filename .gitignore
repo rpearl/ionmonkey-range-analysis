@@ -1,0 +1,21 @@
+# .hgignore - List of filenames hg should ignore
+
+# Filenames that should be ignored wherever they appear
+*~
+*.pyc
+*.pyo
+*TAGS
+.DS_Store
+
+.*.sw*
+
+.mozconfig
+configure
+config.cache
+config.log
+
+obj
+*build*/
+
+autom4te.cache
+tests/results-*
