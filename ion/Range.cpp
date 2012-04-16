@@ -9,13 +9,19 @@
 #include "Ion.h"
 #include "MIR.h"
 #include "MIRGraph.h"
+#include "Range.h"
 
 using namespace js;
 using namespace js::ion;
 
+BetaNodeBuilder::BetaNodeBuilder(MIRGraph &graph)
+  : graph_(graph)
+{ }
+
 // figures out whether one node dominates another
 // XXX: should be a more efficient way; is this code somewhere else?
-bool blockDominates(MBasicBlock *b, MBasicBlock *b2)
+bool
+BetaNodeBuilder::blockDominates(MBasicBlock *b, MBasicBlock *b2)
 {
     while (1) {
         if (b == b2) return true;
@@ -24,8 +30,9 @@ bool blockDominates(MBasicBlock *b, MBasicBlock *b2)
     }
 }
 
-void replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
-                              MBasicBlock *block)
+void
+BetaNodeBuilder::replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
+                                          MBasicBlock *block)
 {
     for (MUseIterator i(orig->usesBegin()); i != orig->usesEnd(); ) {
         MNode *n = i->node();
@@ -39,4 +46,33 @@ void replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
             i++;
         }
     }
+}
+
+bool
+BetaNodeBuilder::addBetaNobes()
+{
+
+    for (MBasicBlockIterator i(graph_.begin()); i != graph_.end(); i++) {
+        MBasicBlock *block = *i;
+
+        if (block->numPredecessors() != 1) continue;
+        if (!block->getPredecessor(0)->lastIns()->isTest()) continue;
+
+        MTest *test = block->getPredecessor(0)->lastIns()->toTest();
+        if (!test->getOperand(0)->isCompare()) continue;
+        MCompare *compare = test->getOperand(0)->toCompare();
+
+        // Add a beta node for the non-constant operands
+        for (uint32 i = 0; i < compare->numOperands(); i++) {
+            MDefinition *op = compare->getOperand(i);
+            if (op->isConstant()) continue;
+
+            MBeta *beta = MBeta::New(op, compare);
+            block->insertBefore(*block->begin(), beta);
+            replaceDominatedUsesWith(op, beta, block);
+        }
+
+    }
+
+    return true;
 }

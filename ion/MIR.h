@@ -2384,8 +2384,8 @@ class MPhi : public MDefinition, public InlineForwardListNode<MPhi>
 class MBeta : public MUnaryInstruction
 {
   private:
-    MTest *test_;
-    MBeta(MDefinition *val, MTest *test)
+    MCompare *test_;
+    MBeta(MDefinition *val, MCompare *test)
       : MUnaryInstruction(val),
         test_(test)
     {
@@ -2394,11 +2394,11 @@ class MBeta : public MUnaryInstruction
 
   public:
     INSTRUCTION_HEADER(Beta);
-    static MBeta *New(MDefinition *val, MTest *test) {
+    static MBeta *New(MDefinition *val, MCompare *test) {
         return new MBeta(val, test);
     }
 
-    MTest *test() const {
+    MCompare *test() const {
         return test_;
     }
 
