@@ -716,7 +716,9 @@ IonBuilder::inspectOpcode(JSOp op)
         return true;
 
       case JSOP_NEWINIT:
-        return jsop_newinit(GET_UINT8(pc) == JSProto_Array);
+        if (GET_UINT8(pc) == JSProto_Array)
+            return jsop_newarray(0);
+        return jsop_newobject(NULL);
 
       case JSOP_NEWARRAY:
         return jsop_newarray(GET_UINT24(pc));
@@ -2435,7 +2437,7 @@ IonBuilder::inlineScriptedCall(JSFunction *target, uint32 argc)
 
     // Compilation information is allocated for the duration of the current tempLifoAlloc
     // lifetime.
-    CompileInfo *info = cx->tempLifoAlloc().new_<CompileInfo>(target->script().get(),
+    CompileInfo *info = cx->tempLifoAlloc().new_<CompileInfo>(target->script(),
                                                               target, (jsbytecode *)NULL);
     if (!info)
         return false;
@@ -2764,14 +2766,6 @@ IonBuilder::jsop_compare(JSOp op)
 }
 
 bool
-IonBuilder::jsop_newinit(bool isArray)
-{
-    if (isArray)
-        return jsop_newarray(0);
-    return jsop_newobject(NULL);
-}
-
-bool
 IonBuilder::jsop_newarray(uint32 count)
 {
     JS_ASSERT(script->hasGlobal());
@@ -2783,7 +2777,7 @@ IonBuilder::jsop_newarray(uint32 count)
             return false;
     }
 
-    MNewArray *ins = new MNewArray(count, type);
+    MNewArray *ins = new MNewArray(count, type, MNewArray::NewArray_Allocating);
 
     current->add(ins);
     current->push(ins);

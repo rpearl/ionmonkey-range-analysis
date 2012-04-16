@@ -681,6 +681,14 @@ TestCompiler(IonBuilder &builder, MIRGraph &graph)
         AssertGraphCoherency(graph);
     }
 
+    if (js_IonOptions.rangeAnalysis) {
+        RangeAnalysis rangeAnalysis(graph);
+        if (!rangeAnalysis.analyzeEarly())
+            return false;
+        IonSpewPass("Range Analysis (Early)");
+        AssertGraphCoherency(graph);
+    }
+
     if (js_IonOptions.gvn) {
         ValueNumberer gvn(graph, js_IonOptions.gvnIsOptimistic);
         if (!gvn.analyze())
@@ -704,9 +712,9 @@ TestCompiler(IonBuilder &builder, MIRGraph &graph)
 
     if (js_IonOptions.rangeAnalysis) {
         RangeAnalysis rangeAnalysis(graph);
-        if (!rangeAnalysis.analyze())
+        if (!rangeAnalysis.analyzeLate())
             return false;
-        IonSpewPass("Range Analysis");
+        IonSpewPass("Range Analysis (Late)");
         AssertGraphCoherency(graph);
     }
 
@@ -797,7 +805,7 @@ CheckFrame(StackFrame *fp)
         return false;
     }
 
-    if (fp->hasArgsObj() || fp->script()->mayNeedArgsObj()) {
+    if (fp->hasArgsObj() || fp->script()->argumentsHasLocalBinding()) {
         // Functions with arguments objects, or scripts that use arguments, are
         // not supported yet.
         IonSpew(IonSpew_Abort, "frame has argsobj");

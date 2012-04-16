@@ -327,7 +327,9 @@ class MDefinition : public MNode
     }
     bool congruentIfOperandsEqual(MDefinition * const &ins) const;
     virtual MDefinition *foldsTo(bool useValueNumbers);
-    virtual void analyzeRange();
+    virtual void analyzeRangeForward();
+    virtual void analyzeRangeBackward();
+    virtual void analyzeTruncateBackward();
 
     MNode::Kind kind() const {
         return MNode::Definition;
@@ -410,6 +412,11 @@ class MDefinition : public MNode
     // returning false if the replacement should not be performed. For use when
     // GVN eliminates instructions which are not equivalent to one another.
     virtual bool updateForReplacement(MDefinition *ins) {
+        return true;
+    }
+
+    // Same thing, but for folding
+    virtual bool updateForFolding(MDefinition *ins) {
         return true;
     }
 
@@ -960,16 +967,25 @@ class MThrow
 
 class MNewArray : public MNullaryInstruction
 {
+  public:
+    enum AllocatingBehaviour {
+        NewArray_Allocating,
+        NewArray_Unallocating
+    };
+
+  private:
     // Number of space to allocate for the array.
     uint32 count_;
     // Type of the object.
     HeapPtr<types::TypeObject> type_;
+    // Allocate space at initialization or not
+    AllocatingBehaviour allocating_;
 
   public:
     INSTRUCTION_HEADER(NewArray);
 
-    MNewArray(uint32 count, types::TypeObject *type)
-        : count_(count), type_(type)
+    MNewArray(uint32 count, types::TypeObject *type, AllocatingBehaviour allocating)
+        : count_(count), type_(type), allocating_(allocating)
     {
         setResultType(MIRType_Object);
     }
@@ -980,6 +996,10 @@ class MNewArray : public MNullaryInstruction
 
     types::TypeObject *type() const {
         return type_;
+    }
+    
+    bool isAllocating() const {
+        return allocating_ == NewArray_Allocating;
     }
 };
 
@@ -1603,7 +1623,9 @@ class MToInt32 : public MUnaryInstruction
     }
 
     MDefinition *foldsTo(bool useValueNumbers);
-    void analyzeRange();
+
+    // this only has backwards information flow.
+    void analyzeRangeBackward();
 
     bool canBeNegativeZero() {
         return canBeNegativeZero_;
@@ -1845,6 +1867,9 @@ class MBitOr : public MBinaryBitwiseInstruction
         return getOperand(0); // x | x => x
     }
 
+    MDefinition *foldIfNegOne(size_t operand) {
+        return getOperand(operand);
+    }
 };
 
 class MBitXor : public MBinaryBitwiseInstruction
@@ -2061,8 +2086,11 @@ class MSqrt
 
 class MAdd : public MBinaryArithInstruction
 {
+    bool implicitTruncate_;
+
     MAdd(MDefinition *left, MDefinition *right)
-      : MBinaryArithInstruction(left, right)
+      : MBinaryArithInstruction(left, right),
+        implicitTruncate_(false)
     {
         setResultType(MIRType_Value);
     }
@@ -2072,7 +2100,15 @@ class MAdd : public MBinaryArithInstruction
     static MAdd *New(MDefinition *left, MDefinition *right) {
         return new MAdd(left, right);
     }
+    void analyzeTruncateBackward();
 
+    bool isTruncated() const {
+        return implicitTruncate_;
+    }
+    void setTruncated(bool val) {
+        implicitTruncate_ = val;
+    }
+    bool updateForReplacement(MDefinition *ins);
     double getIdentity() {
         return 0;
     }
@@ -2080,8 +2116,10 @@ class MAdd : public MBinaryArithInstruction
 
 class MSub : public MBinaryArithInstruction
 {
+    bool implicitTruncate_;
     MSub(MDefinition *left, MDefinition *right)
-      : MBinaryArithInstruction(left, right)
+      : MBinaryArithInstruction(left, right),
+        implicitTruncate_(false)
     {
         setResultType(MIRType_Value);
     }
@@ -2091,6 +2129,15 @@ class MSub : public MBinaryArithInstruction
     static MSub *New(MDefinition *left, MDefinition *right) {
         return new MSub(left, right);
     }
+
+    void analyzeTruncateBackward();
+    bool isTruncated() const {
+        return implicitTruncate_;
+    }
+    void setTruncated(bool val) {
+        implicitTruncate_ = val;
+    }
+    bool updateForReplacement(MDefinition *ins);
 
     double getIdentity() {
         return 0;
@@ -2117,7 +2164,8 @@ class MMul : public MBinaryArithInstruction
     }
 
     MDefinition *foldsTo(bool useValueNumbers);
-    void analyzeRange();
+    void analyzeRangeForward();
+    void analyzeRangeBackward();
 
     double getIdentity() {
         return 1;
@@ -2130,6 +2178,7 @@ class MMul : public MBinaryArithInstruction
     bool canBeNegativeZero() {
         return canBeNegativeZero_;
     }
+    bool updateForReplacement(MDefinition *ins);
 
     bool fallible() {
         return canBeNegativeZero_ || canOverflow_;
@@ -2141,12 +2190,14 @@ class MDiv : public MBinaryArithInstruction
     bool canBeNegativeZero_;
     bool canBeNegativeOverflow_;
     bool canBeDivideByZero_;
+    bool implicitTruncate_;
 
     MDiv(MDefinition *left, MDefinition *right)
       : MBinaryArithInstruction(left, right),
         canBeNegativeZero_(true),
         canBeNegativeOverflow_(true),
-        canBeDivideByZero_(true)
+        canBeDivideByZero_(true),
+        implicitTruncate_(false)
     {
         setResultType(MIRType_Value);
     }
@@ -2158,11 +2209,20 @@ class MDiv : public MBinaryArithInstruction
     }
 
     MDefinition *foldsTo(bool useValueNumbers);
-    void analyzeRange();
+    void analyzeRangeForward();
+    void analyzeRangeBackward();
+    void analyzeTruncateBackward();
 
     double getIdentity() {
         JS_NOT_REACHED("not used");
         return 1;
+    }
+
+    bool isTruncated() const {
+        return implicitTruncate_;
+    }
+    void setTruncated(bool val) {
+        implicitTruncate_ = val;
     }
 
     bool canBeNegativeZero() {
@@ -2176,6 +2236,8 @@ class MDiv : public MBinaryArithInstruction
     bool canBeDivideByZero() {
         return canBeDivideByZero_;
     }
+    bool updateForReplacement(MDefinition *ins);
+
 };
 
 class MMod : public MBinaryArithInstruction
