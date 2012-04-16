@@ -2380,6 +2380,34 @@ class MPhi : public MDefinition, public InlineForwardListNode<MPhi>
     }
 };
 
+// how should we reference the test?
+class MBeta : public MUnaryInstruction
+{
+  private:
+    MTest *test_;
+    MBeta(MDefinition *val, MTest *test)
+      : MUnaryInstruction(val),
+        test_(test)
+    {
+        //setResultType(MIRType_Value);
+    }
+
+  public:
+    INSTRUCTION_HEADER(Beta);
+    static MBeta *New(MDefinition *val, MTest *test) {
+        return new MBeta(val, test);
+    }
+
+    MTest *test() const {
+        return test_;
+    }
+
+    AliasSet getAliasSet() const {
+        return AliasSet::None();
+    }
+};
+
+
 // MIR representation of a Value on the OSR StackFrame.
 // The Value is indexed off of OsrFrameReg.
 class MOsrValue : public MUnaryInstruction
