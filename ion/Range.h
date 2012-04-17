@@ -66,6 +66,38 @@ class BetaNodeBuilder
     bool removeBetaNobes();
 };
 
+class Range {
+    private:
+        /* TODO: we should do symbolic range evaluation, where we have
+         * information of the form v1 < v2 for arbitrary defs v1 and v2, not
+         * just constants
+         */
+        int32 lower_;
+        int32 upper_;
+
+        Range() :
+            lower_(JSVAL_INT_MIN),
+            upper_(JSVAL_INT_MAX)
+        {}
+
+    public:
+        void intersectWith(Range *other);
+        void unionWith(Range *other);
+
+        bool safeAdd(Range *other);
+        bool safeSub(Range *other);
+        bool safeMul(Range *other);
+
+        /* TODO: we probably want a function to add by a constant */
+        void shl(int32 c);
+        void shr(int32 c);
+
+        inline void makeRangeInfinite() {
+            lower_ = JSVAL_INT_MIN;
+            upper_ = JSVAL_INT_MAX;
+        }
+};
+
 } // namespace ion
 } // namespace js
 

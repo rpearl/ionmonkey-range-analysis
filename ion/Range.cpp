@@ -5,6 +5,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include <stdio.h>
+#include <algorithm>
 
 #include "Ion.h"
 #include "MIR.h"
@@ -101,4 +102,88 @@ BetaNodeBuilder::removeBetaNobes()
         }
     }
     return true;
+}
+
+void
+Range::intersectWith(Range *other)
+{
+    upper_ = std::min(upper_, other->upper_);
+    lower_ = std::max(lower_, other->lower_);
+}
+
+void
+Range::unionWith(Range *other)
+{
+    upper_ = std::max(upper_, other->upper_);
+    lower_ = std::min(lower_, other->lower_);
+}
+
+bool
+Range::safeAdd(Range *other)
+{
+    int32 newUpper, newLower;
+    bool overflow;
+    overflow  = SafeAdd(upper_, other->upper_, &newUpper);
+    overflow |= SafeAdd(lower_, other->lower_, &newLower);
+    if (!overflow) {
+        upper_ = newUpper;
+        lower_ = newLower;
+    } else {
+        makeRangeInfinite();
+    }
+    return overflow; //Not sure if needed, but for now...
+}
+
+// TODO: Macro-ify?
+bool
+Range::safeSub(Range *other)
+{
+    int32 newUpper, newLower;
+    bool overflow;
+    overflow  = SafeSub(upper_, other->upper_, &newUpper);
+    overflow |= SafeSub(lower_, other->lower_, &newLower);
+    if (!overflow) {
+        upper_ = newUpper;
+        lower_ = newLower;
+    } else {
+        makeRangeInfinite();
+    }
+    return overflow;
+}
+
+bool
+Range::safeMul(Range *other) {
+    int32 newUpper, newLower;
+    bool overflow;
+    overflow  = SafeMul(upper_, other->upper_, &newUpper);
+    overflow |= SafeMul(lower_, other->lower_, &newLower);
+    if (!overflow) {
+        upper_ = newUpper;
+        lower_ = newLower;
+    } else {
+        makeRangeInfinite();
+    }
+    return overflow;
+}
+
+void
+Range::shl(int32 c)
+{
+    int32 shift = c & 0x1f;
+    int32 newUpper = upper_ << shift;
+    int32 newLower = lower_ << shift;
+    if (newUpper >> c != upper_ || newLower >> c != lower_) {
+        makeRangeInfinite();
+    } else {
+        upper_ = newUpper;
+        lower_ = newLower;
+    }
+}
+
+void
+Range::shr(int32 c)
+{
+    int32 shift = c & 0x1f;
+    upper_ >>= shift;
+    lower_ >>= shift;
 }
