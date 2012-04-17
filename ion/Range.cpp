@@ -10,6 +10,7 @@
 #include "MIR.h"
 #include "MIRGraph.h"
 #include "Range.h"
+#include "IonSpewer.h"
 
 using namespace js;
 using namespace js::ion;
@@ -51,6 +52,7 @@ BetaNodeBuilder::replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
 bool
 BetaNodeBuilder::addBetaNobes()
 {
+    IonSpew(IonSpew_Range, "Adding beta nobes");
 
     for (MBasicBlockIterator i(graph_.begin()); i != graph_.end(); i++) {
         MBasicBlock *block = *i;

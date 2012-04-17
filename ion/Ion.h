@@ -95,6 +95,11 @@ struct IonOptions
     // Default: true
     bool rangeAnalysis;
 
+    // Toggles whether the real Range Analysis is used.
+    //
+    // Default: false
+    bool realRangeAnalysis;
+
     // How many invocations or loop iterations are needed before functions
     // are compiled.
     //
@@ -123,6 +128,7 @@ struct IonOptions
         lsra(true),
         inlining(true),
         rangeAnalysis(true),
+        realRangeAnalysis(false),
         usesBeforeCompile(40),
         usesBeforeInlining(10240)
     { }

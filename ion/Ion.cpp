@@ -49,6 +49,7 @@
 #include "LICM.h"
 #include "ValueNumbering.h"
 #include "RangeAnalysis.h"
+#include "Range.h"
 #include "LinearScan.h"
 #include "jscompartment.h"
 #include "IonCompartment.h"
@@ -694,6 +695,14 @@ TestCompiler(IonBuilder &builder, MIRGraph &graph)
         if (!gvn.analyze())
             return false;
         IonSpewPass("GVN");
+        AssertGraphCoherency(graph);
+    }
+
+    if (js_IonOptions.realRangeAnalysis) {
+        BetaNodeBuilder beta(graph);
+        if (!beta.addBetaNobes())
+            return false;
+        IonSpewPass("Beta");
         AssertGraphCoherency(graph);
     }
 

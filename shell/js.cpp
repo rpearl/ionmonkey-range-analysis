@@ -4702,6 +4702,15 @@ ProcessArgs(JSContext *cx, JSObject *obj, OptionParser *op)
             return OptionFailure("ion-range-analysis", str);
     }
 
+    if (const char *str = op->getStringOption("ion-real-range-analysis")) {
+        if (strcmp(str, "on") == 0)
+            ion::js_IonOptions.realRangeAnalysis = true;
+        else if (strcmp(str, "off") == 0)
+            ion::js_IonOptions.realRangeAnalysis = false;
+        else
+            return OptionFailure("ion-real-range-analysis", str);
+    }
+
     if (const char *str = op->getStringOption("ion-inlining")) {
         if (strcmp(str, "on") == 0)
             ion::js_IonOptions.inlining = true;
@@ -5001,6 +5010,8 @@ main(int argc, char **argv, char **envp)
                                "Loop invariant code motion (default: on, off to disable)")
         || !op.addStringOption('\0', "ion-range-analysis", "on/off",
                                "Range Analysis (default: on, off to disable)")
+        || !op.addStringOption('\0', "ion-real-range-analysis", "on/off",
+                               "Real Range Analysis (default: off, on to enable)")
         || !op.addStringOption('\0', "ion-inlining", "on/off",
                                "Inline methods where possible (default: on, off to disable)")
         || !op.addStringOption('\0', "ion-osr", "on/off",
