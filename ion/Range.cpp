@@ -68,6 +68,8 @@ BetaNodeBuilder::addBetaNobes()
             MDefinition *op = compare->getOperand(i);
             if (op->isConstant()) continue;
 
+            IonSpew(IonSpew_Range, "Adding beta node for %d", op->id());
+
             MBeta *beta = MBeta::New(op, compare, branch_dir == TRUE_BRANCH);
             block->insertBefore(*block->begin(), beta);
             replaceDominatedUsesWith(op, beta, block);
@@ -75,5 +77,28 @@ BetaNodeBuilder::addBetaNobes()
 
     }
 
+    return true;
+}
+
+bool
+BetaNodeBuilder::removeBetaNobes()
+{
+    IonSpew(IonSpew_Range, "Removing beta nobes");
+
+    for (MBasicBlockIterator i(graph_.begin()); i != graph_.end(); i++) {
+        MBasicBlock *block = *i;
+        for (MDefinitionIterator iter(*i); iter; ) {
+            MDefinition *def = *iter;
+            if (def->isBeta()) {
+                MDefinition *op = def->getOperand(0);
+                IonSpew(IonSpew_Range, "Removing beta node %d for %d",
+                        def->id(), op->id());
+                def->replaceAllUsesWith(op);
+                iter = block->discardDefAt(iter);
+            } else {
+                iter++;
+            }
+        }
+    }
     return true;
 }

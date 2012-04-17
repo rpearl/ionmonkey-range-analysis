@@ -704,6 +704,13 @@ TestCompiler(IonBuilder &builder, MIRGraph &graph)
             return false;
         IonSpewPass("Beta");
         AssertGraphCoherency(graph);
+
+        // TODO: We should do something useful here
+
+        IonSpewPass("De-Beta");
+        if (!beta.removeBetaNobes())
+            return false;
+        AssertGraphCoherency(graph);
     }
 
     if (!EliminateDeadCode(graph))

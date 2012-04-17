@@ -63,6 +63,7 @@ class BetaNodeBuilder
   public:
     BetaNodeBuilder(MIRGraph &graph);
     bool addBetaNobes();
+    bool removeBetaNobes();
 };
 
 } // namespace ion
