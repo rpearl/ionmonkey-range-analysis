@@ -2380,26 +2380,34 @@ class MPhi : public MDefinition, public InlineForwardListNode<MPhi>
     }
 };
 
+
 // how should we reference the test?
-class MBeta : public MUnaryInstruction
+class MBeta : public MBinaryInstruction
 {
   private:
     MCompare *test_;
-    MBeta(MDefinition *val, MCompare *test)
-      : MUnaryInstruction(val),
-        test_(test)
+    bool branch_true_;
+    MBeta(MDefinition *val, MCompare *test, bool branch_true)
+        : MBinaryInstruction(val, test),
+          test_(test),
+          branch_true_(branch_true)
     {
         //setResultType(MIRType_Value);
     }
 
   public:
     INSTRUCTION_HEADER(Beta);
-    static MBeta *New(MDefinition *val, MCompare *test) {
-        return new MBeta(val, test);
+    static MBeta *New(MDefinition *val, MCompare *test,
+                      bool branch_true) {
+        return new MBeta(val, test, branch_true);
     }
 
     MCompare *test() const {
         return test_;
+    }
+
+    bool branch_true() const {
+        return branch_true_;
     }
 
     AliasSet getAliasSet() const {

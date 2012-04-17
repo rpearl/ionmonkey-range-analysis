@@ -38,10 +38,10 @@ BetaNodeBuilder::replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
     for (MUseIterator i(orig->usesBegin()); i != orig->usesEnd(); ) {
         MNode *n = i->node();
         bool isPhi = n->isDefinition() && n->toDefinition()->isPhi();
-        // XXX: phi nodes...
-        if ((!isPhi && blockDominates(block, n->block())) ||
-            (isPhi &&
-             blockDominates(block, n->block()->getPredecessor(i->index())))) {
+        if (n != dom &&
+            ((!isPhi && blockDominates(block, n->block())) ||
+             (isPhi &&
+              blockDominates(block, n->block()->getPredecessor(i->index()))))) {
             i = n->replaceOperand(i, dom);
         } else {
             i++;
@@ -57,11 +57,10 @@ BetaNodeBuilder::addBetaNobes()
     for (MBasicBlockIterator i(graph_.begin()); i != graph_.end(); i++) {
         MBasicBlock *block = *i;
 
-        if (block->numPredecessors() != 1) continue;
-        if (!block->getPredecessor(0)->lastIns()->isTest()) continue;
+        BranchDirection branch_dir;
+        MTest *test = block->immediateDominatorBranch(&branch_dir);
+        if (!test || !test->getOperand(0)->isCompare()) continue;
 
-        MTest *test = block->getPredecessor(0)->lastIns()->toTest();
-        if (!test->getOperand(0)->isCompare()) continue;
         MCompare *compare = test->getOperand(0)->toCompare();
 
         // Add a beta node for the non-constant operands
@@ -69,7 +68,7 @@ BetaNodeBuilder::addBetaNobes()
             MDefinition *op = compare->getOperand(i);
             if (op->isConstant()) continue;
 
-            MBeta *beta = MBeta::New(op, compare);
+            MBeta *beta = MBeta::New(op, compare, branch_dir == TRUE_BRANCH);
             block->insertBefore(*block->begin(), beta);
             replaceDominatedUsesWith(op, beta, block);
         }
