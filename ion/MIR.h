@@ -59,6 +59,7 @@
 #include "IonMacroAssembler.h"
 #include "Bailouts.h"
 #include "FixedList.h"
+#include "Range.h"
 
 namespace js {
 namespace ion {
@@ -258,6 +259,8 @@ class MDefinition : public MNode
     uint32 id_;                    // Instruction ID, which after block re-ordering
                                    // is sorted within a basic block.
     ValueNumberData *valueNumber_; // The instruction's value number (see GVN for details in use)
+    Range range_;                  // The most specific known range for this def.
+
     MIRType resultType_;           // Representation of result type.
     uint32 flags_;                 // Bit flags.
     union {
@@ -308,6 +311,7 @@ class MDefinition : public MNode
     MDefinition()
       : id_(0),
         valueNumber_(NULL),
+        range_(),
         resultType_(MIRType_None),
         flags_(0),
         dependency_(NULL)
@@ -321,6 +325,11 @@ class MDefinition : public MNode
     static void PrintOpcodeName(FILE *fp, Opcode op);
     virtual void printOpcode(FILE *fp);
 
+    Range *range() {
+        return &range_;
+    }
+
+
     virtual HashNumber valueHash() const;
     virtual bool congruentTo(MDefinition* const &ins) const {
         return false;
@@ -330,6 +339,11 @@ class MDefinition : public MNode
     virtual void analyzeRangeForward();
     virtual void analyzeRangeBackward();
     virtual void analyzeTruncateBackward();
+
+    // Propagate a range
+    virtual bool recomputeRange() {
+        return false;
+    }
 
     MNode::Kind kind() const {
         return MNode::Definition;
@@ -2112,6 +2126,17 @@ class MAdd : public MBinaryArithInstruction
     double getIdentity() {
         return 0;
     }
+
+    bool recomputeRange() {
+        int32 lower = range()->lower();
+        int32 upper = range()->upper();
+        Range *left = getOperand(0)->range();
+        Range *right = getOperand(1)->range();
+
+        range()->copy(left);
+        range()->safeAdd(right);
+        return (lower == range()->lower() && upper == range()->upper());
+    }
 };
 
 class MSub : public MBinaryArithInstruction
@@ -2382,36 +2407,40 @@ class MPhi : public MDefinition, public InlineForwardListNode<MPhi>
 
 
 // how should we reference the test?
-class MBeta : public MBinaryInstruction
+//
+
+// The goal of a Beta node is to split a def at a conditionally taken
+// branch, so that uses dominated by the have a different name.
+class MBeta : public MUnaryInstruction
 {
   private:
-    MCompare *test_;
-    bool branch_true_;
-    MBeta(MDefinition *val, MCompare *test, bool branch_true)
-        : MBinaryInstruction(val, test),
-          test_(test),
-          branch_true_(branch_true)
+    Range comparison_;
+    MDefinition *val_;
+    MBeta(MDefinition *val, int32 low, int32 high)
+        : MUnaryInstruction(val),
+          comparison_(low, high),
+          val_(val)
     {
         //setResultType(MIRType_Value);
     }
 
   public:
     INSTRUCTION_HEADER(Beta);
-    static MBeta *New(MDefinition *val, MCompare *test,
-                      bool branch_true) {
-        return new MBeta(val, test, branch_true);
-    }
-
-    MCompare *test() const {
-        return test_;
-    }
-
-    bool branch_true() const {
-        return branch_true_;
+    static MBeta *New(MDefinition *val, int32 low, int32 high)
+    {
+        return new MBeta(val, low, high);
     }
 
     AliasSet getAliasSet() const {
         return AliasSet::None();
+    }
+
+    bool recomputeRange() {
+        int32 lower = range()->lower();
+        int32 upper = range()->upper();
+        range()->copy(val_->range());
+        range()->intersectWith(&comparison_);
+        return (lower == range()->lower() && upper == range()->upper());
     }
 };
 

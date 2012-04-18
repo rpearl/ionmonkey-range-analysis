@@ -699,15 +699,15 @@ TestCompiler(IonBuilder &builder, MIRGraph &graph)
     }
 
     if (js_IonOptions.realRangeAnalysis) {
-        BetaNodeBuilder beta(graph);
-        if (!beta.addBetaNobes())
+        RealRangeAnalysis r(graph);
+        if (!r.addBetaNobes())
             return false;
         IonSpewPass("Beta");
         AssertGraphCoherency(graph);
 
         // TODO: We should do something useful here
 
-        if (!beta.removeBetaNobes())
+        if (!r.removeBetaNobes())
             return false;
         IonSpewPass("De-Beta");
         AssertGraphCoherency(graph);

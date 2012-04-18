@@ -16,14 +16,14 @@
 using namespace js;
 using namespace js::ion;
 
-BetaNodeBuilder::BetaNodeBuilder(MIRGraph &graph)
+RealRangeAnalysis::RealRangeAnalysis(MIRGraph &graph)
   : graph_(graph)
 { }
 
 // figures out whether one node dominates another
 // XXX: should be a more efficient way; is this code somewhere else?
 bool
-BetaNodeBuilder::blockDominates(MBasicBlock *b, MBasicBlock *b2)
+RealRangeAnalysis::blockDominates(MBasicBlock *b, MBasicBlock *b2)
 {
     while (1) {
         if (b == b2) return true;
@@ -33,7 +33,7 @@ BetaNodeBuilder::blockDominates(MBasicBlock *b, MBasicBlock *b2)
 }
 
 void
-BetaNodeBuilder::replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
+RealRangeAnalysis::replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
                                           MBasicBlock *block)
 {
     for (MUseIterator i(orig->usesBegin()); i != orig->usesEnd(); ) {
@@ -49,9 +49,8 @@ BetaNodeBuilder::replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
         }
     }
 }
-
 bool
-BetaNodeBuilder::addBetaNobes()
+RealRangeAnalysis::addBetaNobes()
 {
     IonSpew(IonSpew_Range, "Adding beta nobes");
 
@@ -64,25 +63,67 @@ BetaNodeBuilder::addBetaNobes()
 
         MCompare *compare = test->getOperand(0)->toCompare();
 
-        // Add a beta node for the non-constant operands
-        for (uint32 i = 0; i < compare->numOperands(); i++) {
-            MDefinition *op = compare->getOperand(i);
-            if (op->isConstant()) continue;
+        MDefinition *left = compare->getOperand(0);
+        MDefinition *right = compare->getOperand(1);
+        int32 bound;
+        MDefinition *val = NULL;
 
-            IonSpew(IonSpew_Range, "Adding beta node for %d", op->id());
+        JSOp jsop = compare->jsop();
 
-            MBeta *beta = MBeta::New(op, compare, branch_dir == TRUE_BRANCH);
-            block->insertBefore(*block->begin(), beta);
-            replaceDominatedUsesWith(op, beta, block);
+        if (left->isConstant() && left->toConstant()->value().isInt32()) {
+            bound = left->toConstant()->value().toInt32();
+            val = right;
+            jsop = analyze::NegateCompareOp(jsop);
+        } else if (right->isConstant() && right->toConstant()->value().isInt32()) {
+            bound = right->toConstant()->value().toInt32();
+            val = left;
+        } else {
+            continue;
         }
 
+        JS_ASSERT(val);
+
+        if (branch_dir == FALSE_BRANCH)
+            jsop = analyze::NegateCompareOp(jsop);
+        int32 low = JSVAL_INT_MIN;
+        int32 high = JSVAL_INT_MAX;
+        switch (jsop) {
+          case JSOP_LE:
+            high = bound;
+            break;
+          case JSOP_LT:
+            if (!SafeAdd(bound, 1, &bound))
+                break;
+            high = bound;
+            break;
+          case JSOP_GE:
+            low = bound;
+            break;
+          case JSOP_GT:
+            if (!SafeSub(bound, 1, &bound))
+                break;
+            low = bound;
+            break;
+          case JSOP_EQ:
+            low = bound;
+            high = bound;
+          default:
+            break; // well, for neq we could have
+                   // [-\inf, bound-1] U [bound+1, \inf] but we only use contiguous ranges.
+        }
+
+
+        IonSpew(IonSpew_Range, "Adding beta node for %d", val->id());
+            MBeta *beta = MBeta::New(val, low, high);
+            block->insertBefore(*block->begin(), beta);
+            replaceDominatedUsesWith(val, beta, block);
     }
 
     return true;
 }
 
 bool
-BetaNodeBuilder::removeBetaNobes()
+RealRangeAnalysis::removeBetaNobes()
 {
     IonSpew(IonSpew_Range, "Removing beta nobes");
 
@@ -186,4 +227,15 @@ Range::shr(int32 c)
     int32 shift = c & 0x1f;
     upper_ >>= shift;
     lower_ >>= shift;
+}
+
+void
+Range::copy(Range *other)
+{
+    lower_ = other->lower_;
+    upper_ = other->upper_;
+}
+
+bool analyze() {
+    return false;
 }

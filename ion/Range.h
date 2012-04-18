@@ -44,13 +44,15 @@
 #define jsion_range_h__
 
 #include "MIR.h"
-#include "MIRGraph.h"
 #include "CompileInfo.h"
 
 namespace js {
 namespace ion {
 
-class BetaNodeBuilder
+class MBasicBlock;
+class MIRGraph;
+
+class RealRangeAnalysis
 {
   protected:
 	bool blockDominates(MBasicBlock *b, MBasicBlock *b2);
@@ -61,8 +63,9 @@ class BetaNodeBuilder
     MIRGraph &graph_;
 
   public:
-    BetaNodeBuilder(MIRGraph &graph);
+    RealRangeAnalysis(MIRGraph &graph);
     bool addBetaNobes();
+    bool analyze();
     bool removeBetaNobes();
 };
 
@@ -75,14 +78,20 @@ class Range {
         int32 lower_;
         int32 upper_;
 
+
+    public:
         Range() :
             lower_(JSVAL_INT_MIN),
             upper_(JSVAL_INT_MAX)
         {}
 
-    public:
+        Range(int32 l, int32 h) :
+            lower_(l),
+            upper_(h)
+        {}
         void intersectWith(Range *other);
         void unionWith(Range *other);
+        void copy(Range *other);
 
         bool safeAdd(Range *other);
         bool safeSub(Range *other);
@@ -95,6 +104,14 @@ class Range {
         inline void makeRangeInfinite() {
             lower_ = JSVAL_INT_MIN;
             upper_ = JSVAL_INT_MAX;
+        }
+
+        inline int32 lower() const {
+            return lower_;
+        }
+
+        inline int32 upper() const {
+            return upper_;
         }
 };
 
