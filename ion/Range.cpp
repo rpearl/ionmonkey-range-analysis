@@ -92,7 +92,7 @@ RealRangeAnalysis::addBetaNobes()
             high = bound;
             break;
           case JSOP_LT:
-            if (!SafeAdd(bound, 1, &bound))
+            if (!SafeSub(bound, 1, &bound))
                 break;
             high = bound;
             break;
@@ -100,7 +100,7 @@ RealRangeAnalysis::addBetaNobes()
             low = bound;
             break;
           case JSOP_GT:
-            if (!SafeSub(bound, 1, &bound))
+            if (!SafeAdd(bound, 1, &bound))
                 break;
             low = bound;
             break;
