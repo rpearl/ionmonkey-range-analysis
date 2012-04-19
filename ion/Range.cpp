@@ -236,6 +236,43 @@ Range::copy(Range *other)
     upper_ = other->upper_;
 }
 
-bool analyze() {
-    return false;
+bool
+RealRangeAnalysis::analyze() {
+    IonSpew(IonSpew_Range, "Doing range propagation");
+    Vector <MDefinition *, 1, IonAllocPolicy> worklist;
+
+    for (ReversePostorderIterator block(graph_.rpoBegin()); block != graph_.rpoEnd(); block++) {
+        for (MDefinitionIterator iter(*block); iter; iter++) {
+            MDefinition *def = *iter;
+            if (!def->isPhi() && !def->isBeta())
+                continue;
+            def->recomputeRange();
+            for (MUseDefIterator use(def); use; use++) {
+                if (!worklist.append(use.def()))
+                    return false;
+            }
+
+        }
+    }
+
+    while (!worklist.empty()) {
+        MDefinition *def = worklist.popCopy();
+        IonSpew(IonSpew_Range, "recomputing range on %d", def->id());
+        if (def->recomputeRange()) {
+            IonSpew(IonSpew_Range, "Range changed; adding consumers");
+            for (MUseDefIterator use(def); use; use++) {
+                if (!worklist.append(use.def()))
+                    return false;
+            }
+        }
+    }
+
+    for (ReversePostorderIterator block(graph_.rpoBegin()); block != graph_.rpoEnd(); block++) {
+        for (MDefinitionIterator iter(*block); iter; iter++) {
+            MDefinition *def = *iter;
+            IonSpew(IonSpew_Range, "%d has range [%d, %d]", def->id(),
+                    def->range()->lower(), def->range()->upper());
+        }
+    }
+    return true;
 }
