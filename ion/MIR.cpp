@@ -145,8 +145,6 @@ MDefinition::printName(FILE *fp)
     if (valueNumber() != 0)
         fprintf(fp, "-vn%u", valueNumber());
 
-    if (range()->lower() != JSVAL_INT_MIN || range()->upper() != JSVAL_INT_MAX)
-        fprintf(fp, " [%d, %d]", range()->lower(), range()->upper());
 }
 
 HashNumber
@@ -1298,4 +1296,13 @@ MBoundsCheck::updateForReplacement(MDefinition *ins)
     setMinimum(newMinimum);
     setMaximum(newMaximum);
     return true;
+}
+
+void
+MBeta::printOpcode(FILE *fp)
+{
+    PrintOpcodeName(fp, op());
+    fprintf(fp, " ");
+    getOperand(0)->printName(fp);
+    fprintf(fp, " [%d, %d]", comparison_.lower(), comparison_.upper());
 }

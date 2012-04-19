@@ -2426,6 +2426,7 @@ class MBeta : public MUnaryInstruction
 
   public:
     INSTRUCTION_HEADER(Beta);
+    void printOpcode(FILE *fp);
     static MBeta *New(MDefinition *val, int32 low, int32 high)
     {
         return new MBeta(val, low, high);
