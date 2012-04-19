@@ -32,6 +32,7 @@ RealRangeAnalysis::blockDominates(MBasicBlock *b, MBasicBlock *b2)
     }
 }
 
+// XXX I *think* we just wanted MUseDefIterator (which skips bailout points
 void
 RealRangeAnalysis::replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
                                           MBasicBlock *block)
@@ -39,6 +40,7 @@ RealRangeAnalysis::replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
     for (MUseIterator i(orig->usesBegin()); i != orig->usesEnd(); ) {
         MNode *n = i->node();
         bool isPhi = n->isDefinition() && n->toDefinition()->isPhi();
+        // XXX This code is gross
         if (n != dom &&
             ((!isPhi && blockDominates(block, n->block())) ||
              (isPhi &&
@@ -246,6 +248,9 @@ RealRangeAnalysis::analyze() {
             MDefinition *def = *iter;
             if (!def->isPhi() && !def->isBeta())
                 continue;
+
+            // unconditionally recompute the range here. There is probably a
+            // cleaner way to do this.
             def->recomputeRange();
             for (MUseDefIterator use(def); use; use++) {
                 if (!worklist.append(use.def()))
@@ -266,7 +271,7 @@ RealRangeAnalysis::analyze() {
             }
         }
     }
-
+#ifdef DEBUG
     for (ReversePostorderIterator block(graph_.rpoBegin()); block != graph_.rpoEnd(); block++) {
         for (MDefinitionIterator iter(*block); iter; iter++) {
             MDefinition *def = *iter;
@@ -274,5 +279,6 @@ RealRangeAnalysis::analyze() {
                     def->range()->lower(), def->range()->upper());
         }
     }
+#endif
     return true;
 }
