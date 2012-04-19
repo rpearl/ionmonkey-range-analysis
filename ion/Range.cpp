@@ -114,11 +114,10 @@ RealRangeAnalysis::addBetaNobes()
                    // [-\inf, bound-1] U [bound+1, \inf] but we only use contiguous ranges.
         }
 
-
         IonSpew(IonSpew_Range, "Adding beta node for %d", val->id());
-            MBeta *beta = MBeta::New(val, low, high);
-            block->insertBefore(*block->begin(), beta);
-            replaceDominatedUsesWith(val, beta, block);
+        MBeta *beta = MBeta::New(val, low, high);
+        block->insertBefore(*block->begin(), beta);
+        replaceDominatedUsesWith(val, beta, block);
     }
 
     return true;
