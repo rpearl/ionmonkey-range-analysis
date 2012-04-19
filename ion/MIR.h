@@ -2403,6 +2403,18 @@ class MPhi : public MDefinition, public InlineForwardListNode<MPhi>
     AliasSet getAliasSet() const {
         return AliasSet::None();
     }
+
+    bool recomputeRange() {
+        int32 lower = range()->lower();
+        int32 upper = range()->upper();
+
+        range()->copy(getOperand(0)->range());
+
+        for (size_t i = 0; i < numOperands(); i++)
+            range()->unionWith(getOperand(i)->range());
+
+        return (lower != range()->lower() || upper != range()->upper());
+    }
 };
 
 
