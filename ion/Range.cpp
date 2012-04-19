@@ -163,16 +163,16 @@ bool
 Range::safeAdd(Range *other)
 {
     int32 newUpper, newLower;
-    bool overflow;
-    overflow  = SafeAdd(upper_, other->upper_, &newUpper);
-    overflow |= SafeAdd(lower_, other->lower_, &newLower);
-    if (!overflow) {
+    bool safe;
+    safe = SafeAdd(upper_, other->upper_, &newUpper);
+    if (safe)
         upper_ = newUpper;
+
+    safe = SafeAdd(lower_, other->lower_, &newLower);
+    if (safe)
         lower_ = newLower;
-    } else {
-        makeRangeInfinite();
-    }
-    return overflow; //Not sure if needed, but for now...
+
+    return safe; //Not sure if needed, but for now...
 }
 
 // TODO: Macro-ify?
@@ -180,31 +180,31 @@ bool
 Range::safeSub(Range *other)
 {
     int32 newUpper, newLower;
-    bool overflow;
-    overflow  = SafeSub(upper_, other->upper_, &newUpper);
-    overflow |= SafeSub(lower_, other->lower_, &newLower);
-    if (!overflow) {
+    bool safe;
+    safe = SafeSub(upper_, other->upper_, &newUpper);
+    if (safe)
         upper_ = newUpper;
+
+    safe = SafeSub(lower_, other->lower_, &newLower);
+    if (safe)
         lower_ = newLower;
-    } else {
-        makeRangeInfinite();
-    }
-    return overflow;
+
+    return safe;
 }
 
 bool
 Range::safeMul(Range *other) {
     int32 newUpper, newLower;
-    bool overflow;
-    overflow  = SafeMul(upper_, other->upper_, &newUpper);
-    overflow |= SafeMul(lower_, other->lower_, &newLower);
-    if (!overflow) {
+    bool safe;
+    safe = SafeMul(upper_, other->upper_, &newUpper);
+    if (safe)
         upper_ = newUpper;
+
+    safe = SafeMul(lower_, other->lower_, &newLower);
+    if (safe)
         lower_ = newLower;
-    } else {
-        makeRangeInfinite();
-    }
-    return overflow;
+
+    return safe;
 }
 
 void
