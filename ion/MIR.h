@@ -340,7 +340,7 @@ class MDefinition : public MNode
     virtual void analyzeRangeBackward();
     virtual void analyzeTruncateBackward();
 
-    // Propagate a range
+    // Propagate a range. Return true if the range changed.
     virtual bool recomputeRange() {
         return false;
     }
@@ -2135,7 +2135,7 @@ class MAdd : public MBinaryArithInstruction
 
         range()->copy(left);
         range()->safeAdd(right);
-        return (lower == range()->lower() && upper == range()->upper());
+        return (lower != range()->lower() || upper != range()->upper());
     }
 };
 
@@ -2441,7 +2441,7 @@ class MBeta : public MUnaryInstruction
         int32 upper = range()->upper();
         range()->copy(val_->range());
         range()->intersectWith(&comparison_);
-        return (lower == range()->lower() && upper == range()->upper());
+        return (lower != range()->lower() || upper != range()->upper());
     }
 };
 
