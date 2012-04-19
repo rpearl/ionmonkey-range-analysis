@@ -304,6 +304,11 @@ MConstant::MConstant(const js::Value &vp)
 {
     setResultType(MIRTypeFromValue(vp));
     setMovable();
+
+    if (type() == MIRType_Int32) {
+        range()->setLower(value().toInt32());
+        range()->setUpper(value().toInt32());
+    }
 }
 
 HashNumber

@@ -113,6 +113,13 @@ class Range {
         inline int32 upper() const {
             return upper_;
         }
+
+        void setLower(int32 x) {
+            lower_ = x;
+        }
+        void setUpper(int32 x) {
+            upper_ = x;
+        }
 };
 
 } // namespace ion
