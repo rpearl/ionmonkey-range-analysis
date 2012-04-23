@@ -120,6 +120,10 @@ class Range {
         void setUpper(int32 x) {
             upper_ = x;
         }
+        void set(int32 l, int32 h) {
+            lower_ = l;
+            upper_ = h;
+        }
 };
 
 } // namespace ion

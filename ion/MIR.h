@@ -2167,6 +2167,17 @@ class MSub : public MBinaryArithInstruction
     double getIdentity() {
         return 0;
     }
+
+    bool recomputeRange() {
+        int32 lower = range()->lower();
+        int32 upper = range()->upper();
+        Range *left = getOperand(0)->range();
+        Range *right = getOperand(1)->range();
+
+        range()->copy(left);
+        range()->safeSub(right);
+        return (lower != range()->lower() || upper != range()->upper());
+    }
 };
 
 class MMul : public MBinaryArithInstruction
@@ -2207,6 +2218,17 @@ class MMul : public MBinaryArithInstruction
 
     bool fallible() {
         return canBeNegativeZero_ || canOverflow_;
+    }
+
+    bool recomputeRange() {
+        int32 lower = range()->lower();
+        int32 upper = range()->upper();
+        Range *left = getOperand(0)->range();
+        Range *right = getOperand(1)->range();
+
+        range()->copy(left);
+        range()->safeSub(right);
+        return (lower != range()->lower() || upper != range()->upper());
     }
 };
 
@@ -3452,6 +3474,7 @@ class MClampToUint8
     {
         setResultType(MIRType_Int32);
         setMovable();
+        range()->set(0, 255);
     }
 
   public:
