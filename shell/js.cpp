@@ -156,9 +156,10 @@ static double MAX_TIMEOUT_INTERVAL = 1800.0;
 static double gTimeoutInterval = -1.0;
 static volatile bool gCanceled = false;
 
-static bool enableMethodJit = false;
-static bool enableTypeInference = false;
+static bool enableMethodJit = true;
+static bool enableTypeInference = true;
 static bool enableDisassemblyDumps = false;
+static bool enableIon = true;
 
 static bool printTiming = false;
 
@@ -2140,22 +2141,22 @@ DumpStack(JSContext *cx, unsigned argc, Value *vp)
         return false;
 
     StackIter iter(cx);
-    JS_ASSERT((iter.isScripted() && !iter.isScript()) ||
-              iter.nativeArgs().callee().toFunction()->native() == DumpStack);
+
+    // This assert does not yet work with IonMonkey.
+    JS_ASSERT(iter.isNativeCall() && iter.callee().toFunction()->native() == DumpStack);
+
     ++iter;
 
     uint32_t index = 0;
     for (; !iter.done(); ++index, ++iter) {
         Value v;
-        if (iter.isNonEvalFunctionFrame()) {
-            v = ObjectValue(iter.callee());
+        if (iter.isNonEvalFunctionFrame() || iter.isNativeCall()) {
+            v = iter.calleev();
         } else if (iter.isEvalFrame()) {
             v = StringValue(evalStr);
         } else {
             v = StringValue(globalStr);
         }
-        if (v.isNull())
-            return false;
         if (!JS_SetElement(cx, arr, index, &v))
             return false;
     }
@@ -2742,13 +2743,15 @@ ShapeOf(JSContext *cx, unsigned argc, jsval *vp)
  * non-native referent may be simplified to data properties.
  */
 static JSBool
-CopyProperty(JSContext *cx, JSObject *obj, JSObject *referent, jsid id,
+CopyProperty(JSContext *cx, JSObject *obj_, JSObject *referent, jsid id,
              unsigned lookupFlags, JSObject **objp)
 {
     JSProperty *prop;
     PropertyDescriptor desc;
     unsigned propFlags = 0;
     JSObject *obj2;
+
+    RootedVarObject obj(cx, obj_);
 
     *objp = NULL;
     if (referent->isNative()) {
@@ -4301,9 +4304,11 @@ global_enumerate(JSContext *cx, JSObject *obj)
 }
 
 static JSBool
-global_resolve(JSContext *cx, JSObject *obj, jsid id, unsigned flags,
+global_resolve(JSContext *cx, JSObject *obj_, jsid id, unsigned flags,
                JSObject **objp)
 {
+    RootedVarObject obj(cx, obj_);
+
 #ifdef LAZY_STANDARD_CLASSES
     JSBool resolved;
 
@@ -4532,6 +4537,8 @@ NewContext(JSRuntime *rt)
         JS_ToggleOptions(cx, JSOPTION_METHODJIT);
     if (enableTypeInference)
         JS_ToggleOptions(cx, JSOPTION_TYPE_INFERENCE);
+    if (enableIon)
+        JS_ToggleOptions(cx, JSOPTION_ION);
     return cx;
 }
 
@@ -4653,8 +4660,8 @@ ProcessArgs(JSContext *cx, JSObject *obj, OptionParser *op)
     if (op->getBoolOption('c'))
         compileOnly = true;
 
-    if (op->getBoolOption('m')) {
-        enableMethodJit = true;
+    if (op->getBoolOption("no-jm")) {
+        enableMethodJit = false;
         JS_ToggleOptions(cx, JSOPTION_METHODJIT);
     }
 
@@ -4670,8 +4677,10 @@ ProcessArgs(JSContext *cx, JSObject *obj, OptionParser *op)
         enableDisassemblyDumps = true;
 
 #if defined(JS_ION)
-    if (op->getBoolOption("ion"))
-        ion::js_IonOptions.enabled = true;
+    if (op->getBoolOption("no-ion")) {
+        enableIon = false;
+        JS_ToggleOptions(cx, JSOPTION_ION);
+    }
 
     if (const char *str = op->getStringOption("ion-gvn")) {
         if (strcmp(str, "off") == 0)
@@ -4729,10 +4738,8 @@ ProcessArgs(JSContext *cx, JSObject *obj, OptionParser *op)
             return OptionFailure("ion-regalloc", str);
     }
 
-    if (op->getBoolOption("ion-eager")) {
-        ion::js_IonOptions.enabled = true;
+    if (op->getBoolOption("ion-eager"))
         ion::js_IonOptions.setEagerCompilation();
-    }
 #endif
 
     /* |scriptArgs| gets bound on the global before any code is run. */
@@ -4787,8 +4794,8 @@ Shell(JSContext *cx, OptionParser *op, char **envp)
      * First check to see if type inference is enabled. This flag must be set
      * on the compartment when it is constructed.
      */
-    if (op->getBoolOption('n')) {
-        enableTypeInference = !enableTypeInference;
+    if (op->getBoolOption("no-ti")) {
+        enableTypeInference = false;
         JS_ToggleOptions(cx, JSOPTION_TYPE_INFERENCE);
     }
 
@@ -4966,8 +4973,10 @@ main(int argc, char **argv, char **envp)
     if (!op.addMultiStringOption('f', "file", "PATH", "File path to run")
         || !op.addMultiStringOption('e', "execute", "CODE", "Inline code to run")
         || !op.addBoolOption('i', "shell", "Enter prompt after running code")
-        || !op.addBoolOption('m', "methodjit", "Enable the JaegerMonkey method JIT")
-        || !op.addBoolOption('n', "typeinfer", "Enable type inference")
+        || !op.addBoolOption('m', "jm", "Enable the JaegerMonkey method JIT (default)")
+        || !op.addBoolOption('\0', "no-jm", "Disable the JaegerMonkey method JIT")
+        || !op.addBoolOption('n', "ti", "Enable type inference (default)")
+        || !op.addBoolOption('\0', "no-ti", "Disable type inference")
         || !op.addBoolOption('c', "compileonly", "Only compile, don't run (syntax checking mode)")
         || !op.addBoolOption('d', "debugjit", "Enable runtime debug mode for method JIT code")
         || !op.addBoolOption('a', "always-mjit",
@@ -4991,7 +5000,8 @@ main(int argc, char **argv, char **envp)
         || !op.addOptionalMultiStringArg("scriptArgs",
                                          "String arguments to bind as |arguments| in the "
                                          "shell's global")
-        || !op.addBoolOption('\0', "ion", "Enable IonMonkey")
+        || !op.addBoolOption('\0', "ion", "Enable IonMonkey (default)")
+        || !op.addBoolOption('\0', "no-ion", "Disable IonMonkey")
         || !op.addStringOption('\0', "ion-gvn", "[mode]",
                                "Specify Ion global value numbering:\n"
                                "  off: disable GVN\n"
@@ -5009,7 +5019,7 @@ main(int argc, char **argv, char **envp)
                                "Specify Ion register allocation:\n"
                                "  greedy: Greedy register allocation\n"
                                "  lsra: Linear Scan register allocation (default)")
-        || !op.addBoolOption('\0', "ion-eager", "Always compile methods")
+        || !op.addBoolOption('\0', "ion-eager", "Always ion-compile methods")
     )
     {
         return EXIT_FAILURE;

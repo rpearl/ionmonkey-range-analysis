@@ -761,28 +761,20 @@ IonCompile(JSContext *cx, JSScript *script, StackFrame *fp, jsbytecode *osrPc)
     if (!info)
         return false;
 
-    if (cx->typeInferenceEnabled()) {
-        types::AutoEnterTypeInference enter(cx, true);
-        TypeInferenceOracle oracle;
+    types::AutoEnterTypeInference enter(cx, true);
+    TypeInferenceOracle oracle;
 
-        if (!oracle.init(cx, script))
-            return false;
+    if (!oracle.init(cx, script))
+        return false;
 
-        types::AutoEnterCompilation enterCompiler(cx, script, false, 0);
+    types::AutoEnterCompilation enterCompiler(cx, script, false, 0);
 
-        IonBuilder builder(cx, &fp->scopeChain(), temp, graph, &oracle, *info);
-        if (!TestCompiler(builder, graph)) {
-            IonSpew(IonSpew_Abort, "IM Compilation failed.");
-            return false;
-        }
-    } else {
-        DummyOracle oracle;
-        IonBuilder builder(cx, &fp->scopeChain(), temp, graph, &oracle, *info);
-        if (!TestCompiler(builder, graph)) {
-            IonSpew(IonSpew_Abort, "IM Compilation failed.");
-            return false;
-        }
+    IonBuilder builder(cx, &fp->scopeChain(), temp, graph, &oracle, *info);
+    if (!TestCompiler(builder, graph)) {
+        IonSpew(IonSpew_Abort, "IM Compilation failed.");
+        return false;
     }
+
     return true;
 }
 
@@ -842,7 +834,7 @@ CheckFrame(StackFrame *fp)
 static MethodStatus
 Compile(JSContext *cx, JSScript *script, js::StackFrame *fp, jsbytecode *osrPc)
 {
-    JS_ASSERT(ion::IsEnabled());
+    JS_ASSERT(ion::IsEnabled(cx));
     JS_ASSERT_IF(osrPc != NULL, (JSOp)*osrPc == JSOP_LOOPENTRY);
 
     if (cx->compartment->debugMode()) {
@@ -874,7 +866,7 @@ Compile(JSContext *cx, JSScript *script, js::StackFrame *fp, jsbytecode *osrPc)
 MethodStatus
 ion::CanEnterAtBranch(JSContext *cx, JSScript *script, StackFrame *fp, jsbytecode *pc)
 {
-    JS_ASSERT(ion::IsEnabled());
+    JS_ASSERT(ion::IsEnabled(cx));
     JS_ASSERT((JSOp)*pc == JSOP_LOOPENTRY);
 
     // Skip if the script has been disabled.
@@ -913,7 +905,7 @@ ion::CanEnterAtBranch(JSContext *cx, JSScript *script, StackFrame *fp, jsbytecod
 MethodStatus
 ion::CanEnter(JSContext *cx, JSScript *script, StackFrame *fp, bool newType)
 {
-    JS_ASSERT(ion::IsEnabled());
+    JS_ASSERT(ion::IsEnabled(cx));
 
     // Skip if the script has been disabled.
     if (script->ion == ION_DISABLED_SCRIPT)
@@ -923,7 +915,8 @@ ion::CanEnter(JSContext *cx, JSScript *script, StackFrame *fp, bool newType)
     // Creating |this| is done before building Ion because it may change the
     // type information and invalidate compilation results.
     if (fp->isConstructing() && fp->functionThis().isPrimitive()) {
-        JSObject *obj = js_CreateThisForFunction(cx, &fp->callee(), newType);
+        RootedVarObject callee(cx, &fp->callee());
+        RootedVarObject obj(cx, js_CreateThisForFunction(cx, callee, newType));
         if (!obj)
             return Method_Skipped;
         fp->functionThis().setObject(*obj);
@@ -950,7 +943,7 @@ ion::CanEnter(JSContext *cx, JSScript *script, StackFrame *fp, bool newType)
 static bool
 EnterIon(JSContext *cx, StackFrame *fp, void *jitcode)
 {
-    JS_ASSERT(ion::IsEnabled());
+    JS_ASSERT(ion::IsEnabled(cx));
     JS_ASSERT(CheckFrame(fp));
 
     EnterIonCode enter = cx->compartment->ionCompartment()->enterJITInfallible();
