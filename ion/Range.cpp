@@ -51,6 +51,7 @@ RealRangeAnalysis::addBetaNobes()
 
     for (MBasicBlockIterator i(graph_.begin()); i != graph_.end(); i++) {
         MBasicBlock *block = *i;
+        IonSpew(IonSpew_Range, "Looking at block %d", block->id());
 
         BranchDirection branch_dir;
         MTest *test = block->immediateDominatorBranch(&branch_dir);
@@ -269,6 +270,7 @@ RealRangeAnalysis::analyze() {
             MDefinition *def = *iter;
             IonSpew(IonSpew_Range, "%d has range [%d, %d]", def->id(),
                     def->range()->lower(), def->range()->upper());
+            JS_ASSERT(def->range()->lower() <= def->range()->upper());
         }
     }
 #endif
