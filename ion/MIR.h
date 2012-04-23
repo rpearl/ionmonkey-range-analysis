@@ -2045,6 +2045,7 @@ class MAbs
     {
         JS_ASSERT(type == MIRType_Double || type == MIRType_Int32);
         setResultType(type);
+        specialization_ = type;
     }
 
   public:

@@ -227,6 +227,7 @@ EXPORTS_ds = \
 EXPORTS_gc = \
 		Statistics.h \
 		Barrier.h \
+		Root.h \
 		$(NULL)
 
 ######################################################
@@ -257,8 +258,9 @@ EXPORTS_js = \
 ###############################################
 # BEGIN include sources for low-level code shared with mfbt
 #
-VPATH += $(srcdir)/../../mfbt
-include $(srcdir)/../../mfbt/exported_headers.mk
+MFBT_ROOT = $(srcdir)/../../mfbt
+VPATH += $(MFBT_ROOT)
+include $(MFBT_ROOT)/exported_headers.mk
 
 ifdef ENABLE_METHODJIT
 
@@ -393,25 +395,6 @@ endif
 
 endif
 
-###############################################
-# BEGIN include sources for V8 dtoa
-#
-VPATH += 	$(srcdir)/v8-dtoa \
-		$(NONE)
-
-CPPSRCS += 	checks.cc \
-		conversions.cc \
-		diy-fp.cc \
-		v8-dtoa.cc \
-		fast-dtoa.cc \
-		platform.cc \
-		utils.cc \
-		$(NONE)
-
-#
-# END enclude sources for V8 dtoa
-#############################################
-
 # For architectures without YARR JIT, PCRE is faster than the YARR
 # interpreter (bug 684559).
 
@@ -525,6 +508,8 @@ endif
 
 endif # JS_HAS_CTYPES
 
+LOCAL_INCLUDES += -I$(MFBT_ROOT)/double-conversion
+
 ifdef HAVE_DTRACE
 INSTALLED_HEADERS += \
 		$(CURDIR)/javascript-trace.h \
@@ -568,7 +553,7 @@ include $(topsrcdir)/config/config.mk
 ifeq (,$(MOZ_GLUE_PROGRAM_LDFLAGS))
 # When building standalone, we need to include mfbt sources, and to declare
 # "exported" mfbt symbols on its behalf when we use its headers.
-include $(srcdir)/../../mfbt/sources.mk
+include $(MFBT_ROOT)/sources.mk
 DEFINES += -DIMPL_MFBT
 endif
 
@@ -696,15 +681,11 @@ ifneq ($(OS_ARCH),WINNT) # FIXME: this should be made work on Windows too.
 #check:: check-malloc-function-usage FIXME: disable on JM until closer to merge time.
 endif
 
-JITFLAGS = ,m,am,amd,n,mn,amn,amdn,mdn
 check-jit-test::
 	$(wildcard $(RUN_TEST_PROGRAM)) $(PYTHON) -u $(srcdir)/jit-test/jit_test.py \
-	        --valgrind --no-slow --no-progress --tinderbox --jitflags=$(JITFLAGS) $(DIST)/bin/js$(BIN_SUFFIX)
-check-ion-test::
-	$(wildcard $(RUN_TEST_PROGRAM)) $(PYTHON) -u $(srcdir)/jit-test/jit_test.py \
-	        --valgrind --no-slow --no-progress --tinderbox --ion-tbpl $(DIST)/bin/js$(BIN_SUFFIX)
+	        --valgrind --no-slow --no-progress --tinderbox --tbpl $(DIST)/bin/js$(BIN_SUFFIX)
 
-check:: check-jit-test check-ion-test
+check:: check-jit-test
 
 # jstests doesn't have a --jitflags option, so we need to loop, updating the
 # exit code (RC) after each invocation.
