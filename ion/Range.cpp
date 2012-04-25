@@ -141,6 +141,12 @@ RealRangeAnalysis::removeBetaNobes()
 }
 
 void
+Range::printRange(FILE *fp)
+{
+    fprintf(fp, "[%d, %d]", lower_, upper_);
+}
+
+void
 Range::intersectWith(Range *other)
 {
     upper_ = std::min(upper_, other->upper_);

@@ -1304,5 +1304,6 @@ MBeta::printOpcode(FILE *fp)
     PrintOpcodeName(fp, op());
     fprintf(fp, " ");
     getOperand(0)->printName(fp);
-    fprintf(fp, " [%d, %d]", comparison_.lower(), comparison_.upper());
+    fprintf(fp, " ");
+    comparison_.printRange(fp);
 }

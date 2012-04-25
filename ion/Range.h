@@ -89,6 +89,9 @@ class Range {
             lower_(l),
             upper_(h)
         {}
+
+        void printRange(FILE *fp);
+
         void intersectWith(Range *other);
         void unionWith(Range *other);
         void copy(Range *other);
