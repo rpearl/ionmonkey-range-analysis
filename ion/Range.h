@@ -75,26 +75,49 @@ class Range {
          * information of the form v1 < v2 for arbitrary defs v1 and v2, not
          * just constants
          */
-        int32 lower_;
-        int32 upper_;
 
+        // We represent ranges where the endpoints can be in the set:
+        // {-infty} U [INT_MIN, INT_MAX] U {infty}.  A bound of +/-
+        // infty means that the value may have overflowed in that
+        // direction. When computing the range of an integer
+        // instruction, the ranges of the operands can be clamped to
+        // [INT_MIN, INT_MAX], since if they had overflowed they would
+        // no longer be integers. This is important for optimizations
+        // and somewhat subtle.
+        //
+        // N.B.: All of the operations that modify ranges based on
+        // existing ranges will ignore the _infinite_ flags of the
+        // input ranges; that is, they implicitly clamp the ranges of
+        // the inputs to [INT_MIN, INT_MAX].
+        //
+        // To facilitate this trick, we maintain the invariants that:
+        // 1) lower_infinite == true implies lower_ == JSVAL_INT_MIN
+        // 2) upper_infinite == true implies upper_ == JSVAL_INT_MAX
+        int32 lower_;
+        bool lower_infinite_;
+        int32 upper_;
+        bool upper_infinite_;
 
     public:
         Range() :
             lower_(JSVAL_INT_MIN),
-            upper_(JSVAL_INT_MAX)
+            lower_infinite_(true),
+            upper_(JSVAL_INT_MAX),
+            upper_infinite_(true)
         {}
 
         Range(int32 l, int32 h) :
             lower_(l),
-            upper_(h)
+            lower_infinite_(false),
+            upper_(h),
+            upper_infinite_(false)
         {}
 
         void printRange(FILE *fp);
+        void copy(Range *other);
 
         void intersectWith(Range *other);
         void unionWith(Range *other);
-        void copy(Range *other);
 
         void add(Range *other);
         void sub(Range *other);
@@ -104,13 +127,28 @@ class Range {
         void shl(int32 c);
         void shr(int32 c);
 
-        inline void makeRangeInfinite() {
+        inline void makeLowerInfinite() {
+            lower_infinite_ = true;
             lower_ = JSVAL_INT_MIN;
+        }
+        inline void makeUpperInfinite() {
+            upper_infinite_ = true;
             upper_ = JSVAL_INT_MAX;
         }
+        inline void makeRangeInfinite() {
+            makeLowerInfinite();
+            makeUpperInfinite();
+        }
 
-        inline bool isFinite() {
-            return lower_ >  JSVAL_INT_MIN && upper_ < JSVAL_INT_MAX;
+        inline bool isLowerInfinite() const {
+            return lower_infinite_;
+        }
+        inline bool isUpperInfinite() const {
+            return upper_infinite_;
+        }
+
+        inline bool isFinite() const {
+            return !isLowerInfinite() && !isUpperInfinite();
         }
 
         inline int32 lower() const {
@@ -121,15 +159,29 @@ class Range {
             return upper_;
         }
 
-        void setLower(int32 x) {
-            lower_ = x;
+        inline void setLower(int64_t x) {
+            if (x > JSVAL_INT_MAX) { // c.c
+                lower_ = JSVAL_INT_MAX;
+            } else if (x < JSVAL_INT_MIN) {
+                makeLowerInfinite();
+            } else {
+                lower_ = (int32)x;
+                lower_infinite_ = false;
+            }
         }
-        void setUpper(int32 x) {
-            upper_ = x;
+        inline void setUpper(int64_t x) {
+            if (x > JSVAL_INT_MAX) {
+                makeUpperInfinite();
+            } else if (x < JSVAL_INT_MIN) { // c.c
+                upper_ = JSVAL_INT_MIN;
+            } else {
+                upper_ = (int32)x;
+                upper_infinite_ = false;
+            }
         }
-        void set(int32 l, int32 h) {
-            lower_ = l;
-            upper_ = h;
+        void set(int64_t l, int64_t h) {
+            setLower(l);
+            setUpper(h);
         }
 };
 

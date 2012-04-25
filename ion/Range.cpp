@@ -143,14 +143,21 @@ RealRangeAnalysis::removeBetaNobes()
 void
 Range::printRange(FILE *fp)
 {
-    fprintf(fp, "[%d, %d]", lower_, upper_);
+    fprintf(fp, "[");
+    if (lower_infinite_) { fprintf(fp, "-inf"); } else { fprintf(fp, "%d", lower_); }
+    fprintf(fp, ", ");
+    if (upper_infinite_) { fprintf(fp, "inf"); } else { fprintf(fp, "%d", upper_); }
+    fprintf(fp, "]");
 }
 
 void
 Range::intersectWith(Range *other)
 {
-    upper_ = std::min(upper_, other->upper_);
-    lower_ = std::max(lower_, other->lower_);
+    setUpper(std::min(upper_, other->upper_));
+    setLower(std::max(lower_, other->lower_));
+    // FIXME: This is completely not true: upper_ being less than
+    // lower_ means that the range is *empty*, not infinite!. How
+    // should we deal with this?
     if (upper_ < lower_)
         makeRangeInfinite();
 }
@@ -158,89 +165,57 @@ Range::intersectWith(Range *other)
 void
 Range::unionWith(Range *other)
 {
-    upper_ = std::max(upper_, other->upper_);
-    lower_ = std::min(lower_, other->lower_);
-}
-
-static inline int32
-Saturate(int64_t res)
-{
-    if (res > JSVAL_INT_MAX)
-        return JSVAL_INT_MAX;
-    if (res < JSVAL_INT_MIN)
-        return JSVAL_INT_MIN;
-    return (int32)res;
-}
-
-static inline int32
-SaturateAdd(int32 a, int32 b)
-{
-    return Saturate((int64_t)a + (int64_t)b);
-}
-
-static inline int32
-SaturateSub(int32 a, int32 b)
-{
-    return Saturate((int64_t)a - (int64_t)b);
-}
-
-static inline int32
-SaturateMul(int32 a, int32 b)
-{
-    return Saturate((int64_t)a * (int64_t)b);
+    setUpper(std::max(upper_, other->upper_));
+    setLower(std::min(lower_, other->lower_));
 }
 
 void
 Range::add(Range *other)
 {
-    upper_ = SaturateAdd(upper_, other->upper_);
-    lower_ = SaturateAdd(lower_, other->lower_);
+    setUpper((int64_t)upper_ + (int64_t)other->upper_);
+    setLower((int64_t)lower_ + (int64_t)other->lower_);
 }
 
 void
 Range::sub(Range *other)
 {
-    upper_ = SaturateSub(upper_, other->upper_);
-    lower_ = SaturateSub(lower_, other->lower_);
+    setUpper((int64_t)upper_ - (int64_t)other->upper_);
+    setLower((int64_t)lower_ - (int64_t)other->lower_);
 }
 
 void
 Range::mul(Range *other) {
-    int32 a = SaturateMul(lower_, other->lower_);
-    int32 b = SaturateMul(lower_, other->upper_);
-    int32 c = SaturateMul(upper_, other->lower_);
-    int32 d = SaturateMul(upper_, other->upper_);
-    upper_ = std::max( std::max(a, b), std::max(c, d) );
-    lower_ = std::min( std::min(a, b), std::min(c, d) );
+    int64_t a = (int64_t)lower_ * (int64_t)other->lower_;
+    int64_t b = (int64_t)lower_ * (int64_t)other->upper_;
+    int64_t c = (int64_t)upper_ * (int64_t)other->lower_;
+    int64_t d = (int64_t)upper_ * (int64_t)other->upper_;
+    setUpper(std::max( std::max(a, b), std::max(c, d) ));
+    setLower(std::min( std::min(a, b), std::min(c, d) ));
 }
 
 void
 Range::shl(int32 c)
 {
     int32 shift = c & 0x1f;
-    int32 newUpper = upper_ << shift;
-    int32 newLower = lower_ << shift;
-    if (newUpper >> c != upper_ || newLower >> c != lower_) {
-        makeRangeInfinite();
-    } else {
-        upper_ = newUpper;
-        lower_ = newLower;
-    }
+    setLower((int64_t)lower_ << shift);
+    setUpper((int64_t)upper_ << shift);
 }
 
 void
 Range::shr(int32 c)
 {
     int32 shift = c & 0x1f;
-    upper_ >>= shift;
-    lower_ >>= shift;
+    setUpper(upper_ >> shift);
+    setLower(lower_ >> shift);
 }
 
 void
 Range::copy(Range *other)
 {
     lower_ = other->lower_;
+    lower_infinite_ = other->lower_infinite_;
     upper_ = other->upper_;
+    upper_infinite_ = other->upper_infinite_;
 }
 
 bool
