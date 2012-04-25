@@ -106,6 +106,10 @@ class Range {
             upper_ = JSVAL_INT_MAX;
         }
 
+        inline bool isFinite() {
+            return lower_ >  JSVAL_INT_MIN && upper_ < JSVAL_INT_MAX;
+        }
+
         inline int32 lower() const {
             return lower_;
         }
