@@ -2135,7 +2135,7 @@ class MAdd : public MBinaryArithInstruction
         Range *right = getOperand(1)->range();
 
         range()->copy(left);
-        range()->safeAdd(right);
+        range()->add(right);
         return (lower != range()->lower() || upper != range()->upper());
     }
 };
@@ -2176,7 +2176,7 @@ class MSub : public MBinaryArithInstruction
         Range *right = getOperand(1)->range();
 
         range()->copy(left);
-        range()->safeSub(right);
+        range()->sub(right);
         return (lower != range()->lower() || upper != range()->upper());
     }
 };
@@ -2228,7 +2228,7 @@ class MMul : public MBinaryArithInstruction
         Range *right = getOperand(1)->range();
 
         range()->copy(left);
-        range()->safeSub(right);
+        range()->mul(right);
         return (lower != range()->lower() || upper != range()->upper());
     }
 };

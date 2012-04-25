@@ -96,9 +96,9 @@ class Range {
         void unionWith(Range *other);
         void copy(Range *other);
 
-        bool safeAdd(Range *other);
-        bool safeSub(Range *other);
-        bool safeMul(Range *other);
+        void add(Range *other);
+        void sub(Range *other);
+        void mul(Range *other);
 
         /* TODO: we probably want a function to add by a constant */
         void shl(int32 c);

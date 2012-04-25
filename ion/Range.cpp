@@ -151,6 +151,8 @@ Range::intersectWith(Range *other)
 {
     upper_ = std::min(upper_, other->upper_);
     lower_ = std::max(lower_, other->lower_);
+    if (upper_ < lower_)
+        makeRangeInfinite();
 }
 
 void
@@ -160,52 +162,56 @@ Range::unionWith(Range *other)
     lower_ = std::min(lower_, other->lower_);
 }
 
-bool
-Range::safeAdd(Range *other)
+static inline int32
+Saturate(int64_t res)
 {
-    int32 newUpper, newLower;
-    bool safe;
-    safe = SafeAdd(upper_, other->upper_, &newUpper);
-    if (safe)
-        upper_ = newUpper;
-
-    safe = SafeAdd(lower_, other->lower_, &newLower);
-    if (safe)
-        lower_ = newLower;
-
-    return safe; //Not sure if needed, but for now...
+    if (res > JSVAL_INT_MAX)
+        return JSVAL_INT_MAX;
+    if (res < JSVAL_INT_MIN)
+        return JSVAL_INT_MIN;
+    return (int32)res;
 }
 
-// TODO: Macro-ify?
-bool
-Range::safeSub(Range *other)
+static inline int32
+SaturateAdd(int32 a, int32 b)
 {
-    int32 newUpper, newLower;
-    bool safe;
-    safe = SafeSub(upper_, other->upper_, &newUpper);
-    if (safe)
-        upper_ = newUpper;
-
-    safe = SafeSub(lower_, other->lower_, &newLower);
-    if (safe)
-        lower_ = newLower;
-
-    return safe;
+    return Saturate((int64_t)a + (int64_t)b);
 }
 
-bool
-Range::safeMul(Range *other) {
-    int32 newUpper, newLower;
-    bool safe;
-    safe = SafeMul(upper_, other->upper_, &newUpper);
-    if (safe)
-        upper_ = newUpper;
+static inline int32
+SaturateSub(int32 a, int32 b)
+{
+    return Saturate((int64_t)a - (int64_t)b);
+}
 
-    safe = SafeMul(lower_, other->lower_, &newLower);
-    if (safe)
-        lower_ = newLower;
+static inline int32
+SaturateMul(int32 a, int32 b)
+{
+    return Saturate((int64_t)a * (int64_t)b);
+}
 
-    return safe;
+void
+Range::add(Range *other)
+{
+    upper_ = SaturateAdd(upper_, other->upper_);
+    lower_ = SaturateAdd(lower_, other->lower_);
+}
+
+void
+Range::sub(Range *other)
+{
+    upper_ = SaturateSub(upper_, other->upper_);
+    lower_ = SaturateSub(lower_, other->lower_);
+}
+
+void
+Range::mul(Range *other) {
+    int32 a = SaturateMul(lower_, other->lower_);
+    int32 b = SaturateMul(lower_, other->upper_);
+    int32 c = SaturateMul(upper_, other->lower_);
+    int32 d = SaturateMul(upper_, other->upper_);
+    upper_ = std::max( std::max(a, b), std::max(c, d) );
+    lower_ = std::min( std::min(a, b), std::min(c, d) );
 }
 
 void
