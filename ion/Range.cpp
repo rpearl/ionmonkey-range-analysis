@@ -28,6 +28,7 @@ IsDominatedUse(MBasicBlock *block, MUse *use)
 
     if (isPhi)
         return block->dominates(n->block()->getPredecessor(use->index()));
+
     return block->dominates(n->block());
 }
 
@@ -239,12 +240,13 @@ RealRangeAnalysis::analyze() {
     for (ReversePostorderIterator block(graph_.rpoBegin()); block != graph_.rpoEnd(); block++) {
         for (MDefinitionIterator iter(*block); iter; iter++) {
             MDefinition *def = *iter;
-            if (!def->isPhi() && !def->isBeta())
-                continue;
-
             // unconditionally recompute the range here. There is probably a
             // cleaner way to do this.
             def->recomputeRange();
+
+            if (!def->isPhi() && !def->isBeta())
+                continue;
+
             for (MUseDefIterator use(def); use; use++) {
                 if (!worklist.append(use.def()))
                     return false;
