@@ -2198,12 +2198,10 @@ class MSub : public MBinaryArithInstruction
 
 class MMul : public MBinaryArithInstruction
 {
-    bool canOverflow_;
     bool canBeNegativeZero_;
 
     MMul(MDefinition *left, MDefinition *right)
       : MBinaryArithInstruction(left, right),
-        canOverflow_(true),
         canBeNegativeZero_(true)
     {
         setResultType(MIRType_Value);
@@ -2224,7 +2222,7 @@ class MMul : public MBinaryArithInstruction
     }
 
     bool canOverflow() {
-        return canOverflow_;
+        return !range()->isFinite();
     }
 
     bool canBeNegativeZero() {
@@ -2233,7 +2231,7 @@ class MMul : public MBinaryArithInstruction
     bool updateForReplacement(MDefinition *ins);
 
     bool fallible() {
-        return canBeNegativeZero_ || canOverflow_;
+        return canBeNegativeZero_ || canOverflow();
     }
 
     bool recomputeRange() {
