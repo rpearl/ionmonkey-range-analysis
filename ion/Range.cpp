@@ -192,8 +192,8 @@ Range::add(Range *other)
 void
 Range::sub(Range *other)
 {
-    setUpper((int64_t)upper_ - (int64_t)other->upper_);
-    setLower((int64_t)lower_ - (int64_t)other->lower_);
+    setUpper((int64_t)upper_ - (int64_t)other->lower_);
+    setLower((int64_t)lower_ - (int64_t)other->upper_);
 }
 
 void
