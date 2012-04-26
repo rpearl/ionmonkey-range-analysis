@@ -31,6 +31,19 @@ IsDominatedUse(MBasicBlock *block, MUse *use)
     return block->dominates(n->block());
 }
 
+static inline void
+SpewRange(MDefinition *def)
+{
+#ifdef DEBUG
+    if (IonSpewEnabled(IonSpew_Range)) {
+        IonSpewHeader(IonSpew_Range);
+        fprintf(IonSpewFile, "%d has range ", def->id());
+        def->range()->printRange(IonSpewFile);
+        fprintf(IonSpewFile, "\n");
+    }
+#endif
+}
+
 // XXX I *think* we just wanted MUseDefIterator (which skips bailout points
 void
 RealRangeAnalysis::replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
@@ -243,7 +256,9 @@ RealRangeAnalysis::analyze() {
     while (!worklist.empty()) {
         MDefinition *def = worklist.popCopy();
         IonSpew(IonSpew_Range, "recomputing range on %d", def->id());
+        SpewRange(def);
         if (def->recomputeRange()) {
+            JS_ASSERT(def->range()->lower() <= def->range()->upper());
             IonSpew(IonSpew_Range, "Range changed; adding consumers");
             for (MUseDefIterator use(def); use; use++) {
                 if (!worklist.append(use.def()))
@@ -255,8 +270,7 @@ RealRangeAnalysis::analyze() {
     for (ReversePostorderIterator block(graph_.rpoBegin()); block != graph_.rpoEnd(); block++) {
         for (MDefinitionIterator iter(*block); iter; iter++) {
             MDefinition *def = *iter;
-            IonSpew(IonSpew_Range, "%d has range [%d, %d]", def->id(),
-                    def->range()->lower(), def->range()->upper());
+            SpewRange(def);
             JS_ASSERT(def->range()->lower() <= def->range()->upper());
         }
     }
