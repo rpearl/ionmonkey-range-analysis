@@ -705,7 +705,6 @@ TestCompiler(IonBuilder &builder, MIRGraph &graph)
         IonSpewPass("Beta");
         AssertGraphCoherency(graph);
 
-        // TODO: We should do something useful here
         if (!r.analyze())
             return false;
         IonSpewPass("Real Range");
