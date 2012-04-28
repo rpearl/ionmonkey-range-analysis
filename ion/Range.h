@@ -85,8 +85,8 @@ class Range {
         // no longer be integers. This is important for optimizations
         // and somewhat subtle.
         //
-        // N.B.: All of the operations that modify ranges based on
-        // existing ranges will ignore the _infinite_ flags of the
+        // N.B.: All of the operations that compute new ranges based
+        // on existing ranges will ignore the _infinite_ flags of the
         // input ranges; that is, they implicitly clamp the ranges of
         // the inputs to [INT_MIN, INT_MAX].
         //
@@ -106,26 +106,29 @@ class Range {
             upper_infinite_(true)
         {}
 
-        Range(int32 l, int32 h) :
-            lower_(l),
-            lower_infinite_(false),
-            upper_(h),
-            upper_infinite_(false)
-        {}
+        Range(int64_t l, int64_t h) {
+            setLower(l);
+            setUpper(h);
+        }
 
         void printRange(FILE *fp);
-        void copy(Range *other);
+        bool update(const Range *other);
+        bool update(const Range &other) { return update(&other); }
 
-        void intersectWith(Range *other);
-        void unionWith(Range *other);
+        // Unlike the other operations, unionWith is an in-place
+        // modification. This is to avoid a bunch of useless extra
+        // copying when chaining together unions when handling Phi
+        // nodes.
+        void unionWith(const Range *other);
 
-        void add(Range *other);
-        void sub(Range *other);
-        void mul(Range *other);
+        static Range intersect(const Range *lhs, const Range *rhs);
+        static Range add(const Range *lhs, const Range *rhs);
+        static Range sub(const Range *lhs, const Range *rhs);
+        static Range mul(const Range *lhs, const Range *rhs);
 
         /* TODO: we probably want a function to add by a constant */
-        void shl(int32 c);
-        void shr(int32 c);
+        Range shl(const Range *lhs, int32 c);
+        Range shr(const Range *lhs, int32 c);
 
         inline void makeLowerInfinite() {
             lower_infinite_ = true;

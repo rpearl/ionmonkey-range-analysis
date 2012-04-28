@@ -163,72 +163,91 @@ Range::printRange(FILE *fp)
     fprintf(fp, "]");
 }
 
-void
-Range::intersectWith(Range *other)
+Range
+Range::intersect(const Range *lhs, const Range *rhs)
 {
-    setUpper(Min(upper_, other->upper_));
-    setLower(Max(lower_, other->lower_));
+    Range r(
+        Max(lhs->lower_, rhs->lower_),
+        Min(lhs->upper_, rhs->upper_));
+
     // FIXME: This is completely not true: upper_ being less than
     // lower_ means that the range is *empty*, not infinite!. How
     // should we deal with this?
-    if (upper_ < lower_)
-        makeRangeInfinite();
+    if (r.upper_ < r.lower_)
+        r.makeRangeInfinite();
+    return r;
 }
 
 void
-Range::unionWith(Range *other)
+Range::unionWith(const Range *other)
 {
-    setUpper(Max(upper_, other->upper_));
     setLower(Min(lower_, other->lower_));
+    setUpper(Max(upper_, other->upper_));
 }
 
-void
-Range::add(Range *other)
+Range
+Range::add(const Range *lhs, const Range *rhs)
 {
-    setUpper((int64_t)upper_ + (int64_t)other->upper_);
-    setLower((int64_t)lower_ + (int64_t)other->lower_);
+    return Range(
+        (int64_t)lhs->lower_ + (int64_t)rhs->lower_,
+        (int64_t)lhs->upper_ + (int64_t)rhs->upper_);
 }
 
-void
-Range::sub(Range *other)
+Range
+Range::sub(const Range *lhs, const Range *rhs)
 {
-    setUpper((int64_t)upper_ - (int64_t)other->lower_);
-    setLower((int64_t)lower_ - (int64_t)other->upper_);
+    return Range(
+        (int64_t)lhs->lower_ - (int64_t)rhs->upper_,
+        (int64_t)lhs->upper_ - (int64_t)rhs->lower_);
 }
 
-void
-Range::mul(Range *other) {
-    int64_t a = (int64_t)lower_ * (int64_t)other->lower_;
-    int64_t b = (int64_t)lower_ * (int64_t)other->upper_;
-    int64_t c = (int64_t)upper_ * (int64_t)other->lower_;
-    int64_t d = (int64_t)upper_ * (int64_t)other->upper_;
-    setUpper(Max( Max(a, b), Max(c, d) ));
-    setLower(Min( Min(a, b), Min(c, d) ));
-}
-
-void
-Range::shl(int32 c)
+Range
+Range::mul(const Range *lhs, const Range *rhs)
 {
-    int32 shift = c & 0x1f;
-    setLower((int64_t)lower_ << shift);
-    setUpper((int64_t)upper_ << shift);
+    int64_t a = (int64_t)lhs->lower_ * (int64_t)rhs->lower_;
+    int64_t b = (int64_t)lhs->lower_ * (int64_t)rhs->upper_;
+    int64_t c = (int64_t)lhs->upper_ * (int64_t)rhs->lower_;
+    int64_t d = (int64_t)lhs->upper_ * (int64_t)rhs->upper_;
+    return Range(
+        Min( Min(a, b), Min(c, d) ),
+        Max( Max(a, b), Max(c, d) ));
 }
 
-void
-Range::shr(int32 c)
+Range
+Range::shl(const Range *lhs, int32 c)
 {
     int32 shift = c & 0x1f;
-    setUpper(upper_ >> shift);
-    setLower(lower_ >> shift);
+    return Range(
+        (int64_t)lower_ << shift,
+        (int64_t)upper_ << shift);
 }
 
-void
-Range::copy(Range *other)
+Range
+Range::shr(const Range *lhs, int32 c)
 {
-    lower_ = other->lower_;
-    lower_infinite_ = other->lower_infinite_;
-    upper_ = other->upper_;
-    upper_infinite_ = other->upper_infinite_;
+    int32 shift = c & 0x1f;
+    return Range(
+        (int64_t)lower_ >> shift,
+        (int64_t)upper_ >> shift);
+}
+
+bool
+Range::update(const Range *other)
+{
+    bool changed =
+        lower_ != other->lower_ ||
+        lower_infinite_ != other->lower_infinite_ ||
+        upper_ != other->upper_ ||
+        upper_infinite_ != other->upper_infinite_;
+
+    if (changed) {
+        lower_ = other->lower_;
+        lower_infinite_ = other->lower_infinite_;
+        upper_ = other->upper_;
+        upper_infinite_ = other->upper_infinite_;
+    }
+
+    return changed;
 }
 
 bool

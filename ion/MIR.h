@@ -2147,14 +2147,9 @@ class MAdd : public MBinaryArithInstruction
     }
 
     bool recomputeRange() {
-        int32 lower = range()->lower();
-        int32 upper = range()->upper();
         Range *left = getOperand(0)->range();
         Range *right = getOperand(1)->range();
-
-        range()->copy(left);
-        range()->add(right);
-        return (lower != range()->lower() || upper != range()->upper());
+        return range()->update(Range::add(left, right));
     }
 };
 
@@ -2192,14 +2187,9 @@ class MSub : public MBinaryArithInstruction
     }
 
     bool recomputeRange() {
-        int32 lower = range()->lower();
-        int32 upper = range()->upper();
         Range *left = getOperand(0)->range();
         Range *right = getOperand(1)->range();
-
-        range()->copy(left);
-        range()->sub(right);
-        return (lower != range()->lower() || upper != range()->upper());
+        return range()->update(Range::sub(left, right));
     }
 };
 
@@ -2242,14 +2232,9 @@ class MMul : public MBinaryArithInstruction
     }
 
     bool recomputeRange() {
-        int32 lower = range()->lower();
-        int32 upper = range()->upper();
         Range *left = getOperand(0)->range();
         Range *right = getOperand(1)->range();
-
-        range()->copy(left);
-        range()->mul(right);
-        return (lower != range()->lower() || upper != range()->upper());
+        return range()->update(Range::mul(left, right));
     }
 };
 
@@ -2448,15 +2433,13 @@ class MPhi : public MDefinition, public InlineForwardListNode<MPhi>
     }
 
     bool recomputeRange() {
-        int32 lower = range()->lower();
-        int32 upper = range()->upper();
-
-        range()->copy(getOperand(0)->range());
+        Range r;
+        r.update(getOperand(0)->range());
 
         for (size_t i = 0; i < numOperands(); i++)
-            range()->unionWith(getOperand(i)->range());
+            r.unionWith(getOperand(i)->range());
 
-        return (lower != range()->lower() || upper != range()->upper());
+        return range()->update(&r);
     }
 };
 
@@ -2488,11 +2471,8 @@ class MBeta : public MUnaryInstruction
     }
 
     bool recomputeRange() {
-        int32 lower = range()->lower();
-        int32 upper = range()->upper();
-        range()->copy(val_->range());
-        range()->intersectWith(&comparison_);
-        return (lower != range()->lower() || upper != range()->upper());
+        return range()->update(
+            Range::intersect(val_->range(), &comparison_));
     }
 };
 
