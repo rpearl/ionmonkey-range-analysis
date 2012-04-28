@@ -48,7 +48,7 @@ SpewRange(MDefinition *def)
 // XXX I *think* we just wanted MUseDefIterator (which skips bailout points
 void
 RealRangeAnalysis::replaceDominatedUsesWith(MDefinition *orig, MDefinition *dom,
-                                          MBasicBlock *block)
+                                            MBasicBlock *block)
 {
     for (MUseIterator i(orig->usesBegin()); i != orig->usesEnd(); ) {
         if (i->node() != dom && IsDominatedUse(block, *i))

@@ -5021,7 +5021,7 @@ main(int argc, char **argv, char **envp)
         || !op.addStringOption('\0', "ion-range-analysis", "on/off",
                                "Range Analysis (default: on, off to disable)")
         || !op.addStringOption('\0', "ion-real-range-analysis", "on/off",
-                               "Real Range Analysis (default: off, on to enable)")
+                               "Real Range Analysis (default: on, off to disable)")
         || !op.addStringOption('\0', "ion-inlining", "on/off",
                                "Inline methods where possible (default: on, off to disable)")
         || !op.addStringOption('\0', "ion-osr", "on/off",

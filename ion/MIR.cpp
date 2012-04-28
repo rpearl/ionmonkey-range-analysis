@@ -144,7 +144,6 @@ MDefinition::printName(FILE *fp)
 
     if (valueNumber() != 0)
         fprintf(fp, "-vn%u", valueNumber());
-
 }
 
 HashNumber

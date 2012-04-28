@@ -558,7 +558,9 @@ ion::BuildDominatorTree(MIRGraph &graph)
     if (!graph.osrBlock())
         JS_ASSERT(graph.begin()->numDominated() == graph.numBlocks() - 1);
 #endif
-    // Now, iterate through the dominator tree and save the index
+    // Now, iterate through the dominator tree and annotate every
+    // block with its index in the pre-order traversal of the
+    // dominator tree.
     Vector<MBasicBlock *, 1, IonAllocPolicy> worklist;
 
     // The index of the current block in the CFG traversal.

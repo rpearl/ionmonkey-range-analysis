@@ -2143,6 +2143,10 @@ class MAdd : public MBinaryArithInstruction
         return 0;
     }
 
+    bool fallible() {
+        return !isTruncated() && !range()->isFinite();
+    }
+
     bool recomputeRange() {
         int32 lower = range()->lower();
         int32 upper = range()->upper();
@@ -2182,6 +2186,10 @@ class MSub : public MBinaryArithInstruction
 
     double getIdentity() {
         return 0;
+    }
+
+    bool fallible() {
+        return !isTruncated() && !range()->isFinite();
     }
 
     bool recomputeRange() {
@@ -2453,12 +2461,8 @@ class MPhi : public MDefinition, public InlineForwardListNode<MPhi>
     }
 };
 
-
-// how should we reference the test?
-//
-
 // The goal of a Beta node is to split a def at a conditionally taken
-// branch, so that uses dominated by the have a different name.
+// branch, so that uses dominated by it have a different name.
 class MBeta : public MUnaryInstruction
 {
   private:
@@ -2492,7 +2496,6 @@ class MBeta : public MUnaryInstruction
         return (lower != range()->lower() || upper != range()->upper());
     }
 };
-
 
 // MIR representation of a Value on the OSR StackFrame.
 // The Value is indexed off of OsrFrameReg.

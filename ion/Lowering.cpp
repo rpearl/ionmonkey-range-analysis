@@ -565,13 +565,8 @@ LIRGenerator::visitAdd(MAdd *ins)
         JS_ASSERT(lhs->type() == MIRType_Int32);
         ReorderCommutative(&lhs, &rhs);
         LAddI *lir = new LAddI;
-        // If the result isn't truncated and we don't have range
-        // analysis proving that it can't overflow, then we need to
-        // create a bailout.
-        if (!ins->isTruncated() && !ins->range()->isFinite()) {
-            if (!assignSnapshot(lir))
-                return false;
-        }
+        if (ins->fallible() && !assignSnapshot(lir))
+            return false;
 
         return lowerForALU(lir, ins, lhs, rhs);
     }
@@ -595,13 +590,8 @@ LIRGenerator::visitSub(MSub *ins)
     if (ins->specialization() == MIRType_Int32) {
         JS_ASSERT(lhs->type() == MIRType_Int32);
         LSubI *lir = new LSubI;
-        // If the result isn't truncated and we don't have range
-        // analysis proving that it can't overflow, then we need to
-        // create a bailout.
-        if (!ins->isTruncated() && !ins->range()->isFinite()) {
-            if (!assignSnapshot(lir))
-                return false;
-        }
+        if (ins->fallible() && !assignSnapshot(lir))
+            return false;
 
         return lowerForALU(lir, ins, lhs, rhs);
     }
