@@ -45,7 +45,6 @@
 // This file declares everything needed to build actual MIR instructions: the
 // actual opcodes and instructions themselves, the instruction interface, and
 // use chains.
-#include <algorithm>
 #include "jscntxt.h"
 #include "jslibmath.h"
 #include "jsinfer.h"
@@ -2076,7 +2075,7 @@ class MAbs
         Range *other = getOperand(0)->range();
         int64_t newLower = (int64_t)other->lower();
         int64_t newUpper = (int64_t)other->upper();
-        int64_t high = std::max(abs(newLower), abs(newUpper));
+        int64_t high = Max(abs(newLower), abs(newUpper));
         range()->set(0, high);
 
         return (lower != range()->lower() || upper != range()->upper());

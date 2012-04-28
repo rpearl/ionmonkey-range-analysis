@@ -5,7 +5,6 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include <stdio.h>
-#include <algorithm>
 
 #include "Ion.h"
 #include "MIR.h"
@@ -167,8 +166,8 @@ Range::printRange(FILE *fp)
 void
 Range::intersectWith(Range *other)
 {
-    setUpper(std::min(upper_, other->upper_));
-    setLower(std::max(lower_, other->lower_));
+    setUpper(Min(upper_, other->upper_));
+    setLower(Max(lower_, other->lower_));
     // FIXME: This is completely not true: upper_ being less than
     // lower_ means that the range is *empty*, not infinite!. How
     // should we deal with this?
@@ -179,8 +178,8 @@ Range::intersectWith(Range *other)
 void
 Range::unionWith(Range *other)
 {
-    setUpper(std::max(upper_, other->upper_));
-    setLower(std::min(lower_, other->lower_));
+    setUpper(Max(upper_, other->upper_));
+    setLower(Min(lower_, other->lower_));
 }
 
 void
@@ -203,8 +202,8 @@ Range::mul(Range *other) {
     int64_t b = (int64_t)lower_ * (int64_t)other->upper_;
     int64_t c = (int64_t)upper_ * (int64_t)other->lower_;
     int64_t d = (int64_t)upper_ * (int64_t)other->upper_;
-    setUpper(std::max( std::max(a, b), std::max(c, d) ));
-    setLower(std::min( std::min(a, b), std::min(c, d) ));
+    setUpper(Max( Max(a, b), Max(c, d) ));
+    setLower(Min( Min(a, b), Min(c, d) ));
 }
 
 void
