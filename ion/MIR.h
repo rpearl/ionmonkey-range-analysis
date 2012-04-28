@@ -2077,16 +2077,12 @@ class MAbs
         if (specialization_ != MIRType_Int32)
             return false;
 
-        int32 lower = range()->lower();
-        int32 upper = range()->upper();
-
         Range *other = getOperand(0)->range();
-        int64_t newLower = (int64_t)other->lower();
-        int64_t newUpper = (int64_t)other->upper();
-        int64_t high = Max(abs(newLower), abs(newUpper));
-        range()->set(0, high);
+        Range r(0,
+                Max(llabs((int64_t)other->lower()),
+                    llabs((int64_t)other->upper())));
 
-        return (lower != range()->lower() || upper != range()->upper());
+        return range()->update(r);
     }
 };
 
