@@ -23,7 +23,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *   Ryan Pearl <rpearl@andrew.cmu.edu>
+ *   Ryan Pearl <rpearl@endofunctor.org>
  *   Michael Sullivan <sully@msully.net>
  *
  * Alternatively, the contents of this file may be used under the terms of
