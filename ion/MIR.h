@@ -3031,6 +3031,9 @@ class MBoundsCheckLower
     AliasSet getAliasSet() const {
         return AliasSet::None();
     }
+    bool fallible() {
+        return range()->lower() < minimum_;
+    }
 };
 
 // Load a value from a dense array's element vector and does a hole check if the

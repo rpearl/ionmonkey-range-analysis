@@ -1099,6 +1099,7 @@ LIRGenerator::visitBoundsCheck(MBoundsCheck *ins)
 bool
 LIRGenerator::visitBoundsCheckLower(MBoundsCheckLower *ins)
 {
+    if (!ins->fallible()) return true;
     LInstruction *check = new LBoundsCheckLower(useRegister(ins->index()));
     return assignSnapshot(check) && add(check, ins);
 }
