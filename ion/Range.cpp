@@ -218,8 +218,8 @@ Range::shl(const Range *lhs, int32 c)
 {
     int32 shift = c & 0x1f;
     return Range(
-        (int64_t)lower_ << shift,
-        (int64_t)upper_ << shift);
+        (int64_t)lhs->lower_ << shift,
+        (int64_t)lhs->upper_ << shift);
 }
 
 Range
@@ -227,8 +227,8 @@ Range::shr(const Range *lhs, int32 c)
 {
     int32 shift = c & 0x1f;
     return Range(
-        (int64_t)lower_ >> shift,
-        (int64_t)upper_ >> shift);
+        (int64_t)lhs->lower_ >> shift,
+        (int64_t)lhs->upper_ >> shift);
 }
 
 bool

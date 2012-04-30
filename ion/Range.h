@@ -127,8 +127,8 @@ class Range {
         static Range mul(const Range *lhs, const Range *rhs);
 
         /* TODO: we probably want a function to add by a constant */
-        Range shl(const Range *lhs, int32 c);
-        Range shr(const Range *lhs, int32 c);
+        static Range shl(const Range *lhs, int32 c);
+        static Range shr(const Range *lhs, int32 c);
 
         inline void makeLowerInfinite() {
             lower_infinite_ = true;
