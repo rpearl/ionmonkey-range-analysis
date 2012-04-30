@@ -79,6 +79,9 @@ RealRangeAnalysis::addBetaNobes()
 
         JSOp jsop = compare->jsop();
 
+        if (branch_dir == FALSE_BRANCH)
+            jsop = analyze::NegateCompareOp(jsop);
+
         if (left->isConstant() && left->toConstant()->value().isInt32()) {
             bound = left->toConstant()->value().toInt32();
             val = right;
@@ -87,13 +90,30 @@ RealRangeAnalysis::addBetaNobes()
             bound = right->toConstant()->value().toInt32();
             val = left;
         } else {
+            MDefinition *smaller = NULL;
+            MDefinition *greater = NULL;
+            if (jsop == JSOP_LT) {
+                smaller = left;
+                greater = right;
+            } else if (JSOP_GT) {
+                smaller = right;
+                greater = left;
+            }
+            if (smaller && greater) {
+                MBeta *beta;
+                beta = MBeta::New(smaller, JSVAL_INT_MIN, JSVAL_INT_MAX-1);
+                block->insertBefore(*block->begin(), beta);
+                replaceDominatedUsesWith(smaller, beta, block);
+                beta = MBeta::New(greater, JSVAL_INT_MIN+1, JSVAL_INT_MAX);
+                block->insertBefore(*block->begin(), beta);
+                replaceDominatedUsesWith(greater, beta, block);
+            }
             continue;
         }
 
         JS_ASSERT(val);
 
-        if (branch_dir == FALSE_BRANCH)
-            jsop = analyze::NegateCompareOp(jsop);
+
         int32 low = JSVAL_INT_MIN;
         int32 high = JSVAL_INT_MAX;
         switch (jsop) {
