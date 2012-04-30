@@ -1630,6 +1630,7 @@ class MToInt32 : public MUnaryInstruction
     {
         setResultType(MIRType_Int32);
         setMovable();
+        range()->set(JSVAL_INT_MIN, JSVAL_INT_MAX);
     }
 
   public:
@@ -1670,6 +1671,7 @@ class MTruncateToInt32 : public MUnaryInstruction
     {
         setResultType(MIRType_Int32);
         setMovable();
+        range()->set(JSVAL_INT_MIN, JSVAL_INT_MAX);
     }
 
   public:
@@ -1735,6 +1737,7 @@ class MBitNot
     {
         setResultType(MIRType_Int32);
         setMovable();
+        range()->set(JSVAL_INT_MIN, JSVAL_INT_MAX);
     }
 
   public:
@@ -1829,6 +1832,7 @@ class MBinaryBitwiseInstruction
     {
         setResultType(MIRType_Int32);
         setMovable();
+        range()->set(JSVAL_INT_MIN, JSVAL_INT_MAX);
     }
 
   public:
@@ -1942,6 +1946,16 @@ class MLsh : public MShiftInstruction
         // x << 0 => x
         return getOperand(0);
     }
+
+    bool recomputeRange() {
+        MDefinition *right = getOperand(1);
+        if (!right->isConstant())
+            return false;
+
+        int32 c = right->toConstant()->value().toInt32();
+        const Range *other = getOperand(0)->range();
+        return range()->update(Range::shl(other, c));
+    }
 };
 
 class MRsh : public MShiftInstruction
@@ -1958,6 +1972,15 @@ class MRsh : public MShiftInstruction
         // 0 >> x => 0
         // x >> 0 => x
         return getOperand(0);
+    }
+    bool recomputeRange() {
+        MDefinition *right = getOperand(1);
+        if (!right->isConstant())
+            return false;
+
+            int32 c = right->toConstant()->value().toInt32();
+            Range *other = getOperand(0)->range();
+            return range()->update(Range::shr(other, c));
     }
 };
 
@@ -2151,6 +2174,8 @@ class MAdd : public MBinaryArithInstruction
     }
 
     bool recomputeRange() {
+        if (specialization() != MIRType_Int32)
+            return false;
         Range *left = getOperand(0)->range();
         Range *right = getOperand(1)->range();
         return range()->update(Range::add(left, right));
@@ -2191,6 +2216,8 @@ class MSub : public MBinaryArithInstruction
     }
 
     bool recomputeRange() {
+        if (specialization() != MIRType_Int32)
+            return false;
         Range *left = getOperand(0)->range();
         Range *right = getOperand(1)->range();
         return range()->update(Range::sub(left, right));
@@ -2236,6 +2263,8 @@ class MMul : public MBinaryArithInstruction
     }
 
     bool recomputeRange() {
+        if (specialization() != MIRType_Int32)
+            return false;
         Range *left = getOperand(0)->range();
         Range *right = getOperand(1)->range();
         return range()->update(Range::mul(left, right));
@@ -2316,6 +2345,17 @@ class MMod : public MBinaryArithInstruction
         JS_NOT_REACHED("not used");
         return 1;
     }
+
+    bool recomputeRange() {
+        if (specialization() != MIRType_Int32)
+            return false;
+        Range *other = getOperand(0)->range();
+        int64_t a = llabs((int64_t)other->lower());
+        int64_t b = llabs((int64_t)other->upper());
+        Range r(Min(-a+1, -b+1),
+                Max( a-1,  b-1));
+        return range()->update(r);
+    }
 };
 
 class MConcat
@@ -2356,6 +2396,8 @@ class MCharCodeAt
     {
         setMovable();
         setResultType(MIRType_Int32);
+        range()->set(0, 65535); //ECMA 262 says that the integer will be
+                                //non-negative and less than 65535.
     }
 
     INSTRUCTION_HEADER(CharCodeAt);
