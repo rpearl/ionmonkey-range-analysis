@@ -82,7 +82,7 @@ RealRangeAnalysis::addBetaNobes()
         if (left->isConstant() && left->toConstant()->value().isInt32()) {
             bound = left->toConstant()->value().toInt32();
             val = right;
-            jsop = analyze::NegateCompareOp(jsop);
+            jsop = analyze::ReverseCompareOp(jsop);
         } else if (right->isConstant() && right->toConstant()->value().isInt32()) {
             bound = right->toConstant()->value().toInt32();
             val = left;
