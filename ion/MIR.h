@@ -1077,6 +1077,9 @@ class MInitProp
     PropertyName *propertyName() const {
         return name_;
     }
+    TypePolicy *typePolicy() {
+        return this;
+    }
 };
 
 // Designates the start of call frame construction.
