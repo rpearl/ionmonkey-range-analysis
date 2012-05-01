@@ -146,7 +146,10 @@ RealRangeAnalysis::removeBetaNobes()
                 def->replaceAllUsesWith(op);
                 iter = block->discardDefAt(iter);
             } else {
-                iter++;
+                // We only place Beta nodes at the beginning of basic
+                // blocks, so if we see something else, we can move on
+                // to the next block.
+                break;
             }
         }
     }
