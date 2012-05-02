@@ -296,7 +296,7 @@ RealRangeAnalysis::analyze() {
         }
     }
     size_t iters = 0;
-#define MAX_ITERS 64
+#define MAX_ITERS 4096
     while (!worklist.empty() && iters < MAX_ITERS) {
         MDefinition *def = worklist.popCopy();
         IonSpew(IonSpew_Range, "recomputing range on %d", def->id());
