@@ -295,8 +295,9 @@ RealRangeAnalysis::analyze() {
 
         }
     }
-
-    while (!worklist.empty()) {
+    size_t iters = 0;
+#define MAX_ITERS 64
+    while (!worklist.empty() && iters < MAX_ITERS) {
         MDefinition *def = worklist.popCopy();
         IonSpew(IonSpew_Range, "recomputing range on %d", def->id());
         SpewRange(def);
@@ -308,6 +309,7 @@ RealRangeAnalysis::analyze() {
                     return false;
             }
         }
+        iters++;
     }
 #ifdef DEBUG
     for (ReversePostorderIterator block(graph_.rpoBegin()); block != graph_.rpoEnd(); block++) {
