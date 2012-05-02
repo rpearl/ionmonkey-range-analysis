@@ -62,7 +62,7 @@ RealRangeAnalysis::addBetaNobes()
 {
     IonSpew(IonSpew_Range, "Adding beta nobes");
 
-    for (MBasicBlockIterator i(graph_.begin()); i != graph_.end(); i++) {
+    for (PostorderIterator i(graph_.poBegin()); i != graph_.poEnd(); i++) {
         MBasicBlock *block = *i;
         IonSpew(IonSpew_Range, "Looking at block %d", block->id());
 
@@ -155,7 +155,7 @@ RealRangeAnalysis::removeBetaNobes()
 {
     IonSpew(IonSpew_Range, "Removing beta nobes");
 
-    for (MBasicBlockIterator i(graph_.begin()); i != graph_.end(); i++) {
+    for (PostorderIterator i(graph_.poBegin()); i != graph_.poEnd(); i++) {
         MBasicBlock *block = *i;
         for (MDefinitionIterator iter(*i); iter; ) {
             MDefinition *def = *iter;
@@ -276,7 +276,7 @@ Range::update(const Range *other)
 bool
 RealRangeAnalysis::analyze() {
     IonSpew(IonSpew_Range, "Doing range propagation");
-    Vector <MDefinition *, 1, IonAllocPolicy> worklist;
+    Vector <MDefinition *, 8, IonAllocPolicy> worklist;
 
     for (ReversePostorderIterator block(graph_.rpoBegin()); block != graph_.rpoEnd(); block++) {
         for (MDefinitionIterator iter(*block); iter; iter++) {
