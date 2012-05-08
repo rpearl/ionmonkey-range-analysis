@@ -44,7 +44,6 @@
 #include "jsexn.h"
 #include "jsfriendapi.h"
 #include "jsgc.h"
-#include "jsgcmark.h"
 #include "jsinfer.h"
 #include "jsmath.h"
 #include "jsnum.h"
@@ -57,6 +56,7 @@
 
 #include "ion/Ion.h"
 #include "frontend/TokenStream.h"
+#include "gc/Marking.h"
 #include "js/MemoryMetrics.h"
 #include "methodjit/MethodJIT.h"
 #include "methodjit/Retcon.h"
@@ -3082,11 +3082,10 @@ TypeObject::clearNewScript(JSContext *cx)
         pcOffsets.append(uint32_t(iter.pc() - iter.script()->code));
         if (iter.isConstructing() &&
             iter.callee() == newScript->fun &&
-            iter.thisv().isObject() &&
-            !iter.thisv().toObject().hasLazyType() &&
-            iter.thisv().toObject().type() == this)
+            !iter.thisObject()->hasLazyType() &&
+            iter.thisObject()->type() == this)
         {
-            JSObject *obj = &iter.thisv().toObject();
+            JSObject *obj = iter.thisObject();
 
             /* Whether all identified 'new' properties have been initialized. */
             bool finished = false;
@@ -5747,7 +5746,7 @@ JSObject::getNewType(JSContext *cx, JSFunction *fun)
 TypeObject *
 JSCompartment::getLazyType(JSContext *cx, JSObject *proto)
 {
-    gc::MaybeCheckStackRoots(cx);
+    MaybeCheckStackRoots(cx);
 
     TypeObjectSet &table = cx->compartment->lazyTypeObjects;
 

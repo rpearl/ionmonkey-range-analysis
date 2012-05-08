@@ -39,7 +39,7 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "jscntxt.h"
-#include "jsgcmark.h"
+#include "gc/Marking.h"
 #include "methodjit/MethodJIT.h"
 #include "ion/IonFrames.h"
 #include "Stack.h"
@@ -1174,12 +1174,12 @@ StackIter::settleOnNewState()
 
 #ifdef JS_ION
             if (fp_->runningInIon()) {
-                ionFrames_ = ion::IonFrameIterator(ionActivations_.top());
+                ionFrames_ = ion::IonFrameIterator(ionActivations_);
 
-                while (ionFrames_.more() && !ionFrames_.isScripted())
+                while (!ionFrames_.done() && !ionFrames_.isScripted())
                     ++ionFrames_;
 
-                if (!ionFrames_.more()) {
+                if (ionFrames_.done()) {
                     // In this case, we bailed out the last frame, so we
                     // shouldn't really transition to Ion code.
                     ++ionActivations_;
@@ -1298,10 +1298,10 @@ StackIter::popIonFrame()
         script_ = ionInlineFrames_.script();
     } else {
         ++ionFrames_;
-        while (ionFrames_.more() && !ionFrames_.isScripted())
+        while (!ionFrames_.done() && !ionFrames_.isScripted())
             ++ionFrames_;
 
-        if (ionFrames_.more()) {
+        if (!ionFrames_.done()) {
             ionInlineFrames_ = ion::InlineFrameIterator(&ionFrames_);
             pc_ = ionInlineFrames_.pc();
             script_ = ionInlineFrames_.script();
@@ -1410,6 +1410,8 @@ StackIter::isConstructing() const
       case DONE:
         JS_NOT_REACHED("Unexpected state");
         return false;
+      case ION:
+        return ionInlineFrames_.isConstructing();
       case SCRIPTED:
       case NATIVE:
       case IMPLICIT_NATIVE:
@@ -1456,20 +1458,45 @@ StackIter::calleev() const
     return Value();
 }
 
-Value
-StackIter::thisv() const
+unsigned
+StackIter::numActualArgs() const
 {
     switch (state_) {
       case DONE:
-        MOZ_NOT_REACHED("Unexpected state");
-        return Value();
+        break;
+      case SCRIPTED:
+        JS_ASSERT(isFunctionFrame());
+        return fp()->numActualArgs();
+      case ION:
+        // :TODO: We need to handle actual arguments in IonMonkey.  Currently we
+        // cannot easily read all arguments used for the call and we do not want
+        // to hack around it because a part of Bug 735406 is to instrucment Ion
+        // frames to provide actual arguments.
+        JS_ASSERT(ionInlineFrames_.numActualArgs() <= ionInlineFrames_.callee()->nargs);
+        return ionInlineFrames_.numActualArgs();
+      case NATIVE:
+      case IMPLICIT_NATIVE:
+        return nativeArgs().length();
+    }
+    JS_NOT_REACHED("Unexpected state");
+    return 0;
+}
+
+JSObject *
+StackIter::thisObject() const
+{
+    switch (state_) {
+      case DONE:
+        break;
+      case ION:
+        return ionInlineFrames_.thisObject();
       case SCRIPTED:
       case NATIVE:
       case IMPLICIT_NATIVE:
-        return fp()->thisValue();
+        return &fp()->thisValue().toObject();
     }
-    MOZ_NOT_REACHED("unexpected state");
-    return Value();
+    JS_NOT_REACHED("Unexpected state");
+    return NULL;
 }
 
 /*****************************************************************************/

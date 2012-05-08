@@ -49,7 +49,7 @@
 #include "Safepoints.h"
 #include "IonSpewer.h"
 #include "IonMacroAssembler.h"
-#include "jsgcmark.h"
+#include "gc/Marking.h"
 #include "SnapshotReader.h"
 #include "Safepoints.h"
 
@@ -129,6 +129,16 @@ IonScript *
 FrameRecovery::ionScript() const
 {
     return ionScript_ ? ionScript_ : script_->ion;
+}
+
+IonFrameIterator::IonFrameIterator(const IonActivationIterator &activations)
+    : current_(activations.top()),
+      type_(IonFrame_Exit),
+      returnAddressToFp_(NULL),
+      frameSize_(0),
+      cachedSafepointIndex_(NULL),
+      activation_(activations.activation())
+{
 }
 
 IonFrameIterator::IonFrameIterator(IonJSFrameLayout *fp)
@@ -347,6 +357,13 @@ ion::HandleException(ResumeFromException *rfe)
         ++iter;
     }
 
+    // Clear any Ion return override that's been set.
+    // This may happen if a callVM function causes an invalidation (setting the
+    // override), and then fails, bypassing the bailout handlers that would
+    // otherwise clear the return override.
+    if (cx->runtime->hasIonReturnOverride())
+        cx->runtime->takeIonReturnOverride();
+
     rfe->stackPointer = iter.fp();
 }
 
@@ -451,7 +468,7 @@ MarkIonJSFrame(JSTracer *trc, const IonFrameIterator &frame)
 static void
 MarkIonActivation(JSTracer *trc, uint8 *top)
 {
-    for (IonFrameIterator frames(top); frames.more(); ++frames) {
+    for (IonFrameIterator frames(top); !frames.done(); ++frames) {
         switch (frames.type()) {
           case IonFrame_Exit:
             // The exit frame gets ignored.
@@ -551,6 +568,12 @@ SnapshotIterator::SnapshotIterator()
 {
 }
 
+bool
+SnapshotIterator::hasLocation(const SnapshotReader::Location &loc)
+{
+    return loc.isStackSlot() && machine_.has(loc.reg());
+}
+
 uintptr_t
 SnapshotIterator::fromLocation(const SnapshotReader::Location &loc)
 {
@@ -574,6 +597,28 @@ SnapshotIterator::FromTypedPayload(JSValueType type, uintptr_t payload)
       default:
         JS_NOT_REACHED("unexpected type - needs payload");
         return UndefinedValue();
+    }
+}
+
+bool
+SnapshotIterator::slotReadable(const Slot &slot)
+{
+    switch (slot.mode()) {
+      case SnapshotReader::DOUBLE_REG:
+        return machine_.has(slot.floatReg());
+
+      case SnapshotReader::TYPED_REG:
+        return machine_.has(slot.reg());
+
+      case SnapshotReader::UNTYPED:
+#if defined(JS_NUNBOX32)
+          return hasLocation(slot.type()) && hasLocation(slot.payload());
+#elif defined(JS_PUNBOX64)
+          return hasLocation(slot.value());
+#endif
+
+      default:
+        return true;
     }
 }
 
@@ -730,3 +775,96 @@ MachineState::FromBailout(uintptr_t regs[Registers::Total],
     return machine;
 }
 
+bool
+InlineFrameIterator::isConstructing() const
+{
+    // Skip the current frame and look at the caller's.
+    if (more()) {
+        InlineFrameIterator parent(*this);
+        ++parent;
+
+        // In the case of a JS frame, look up the pc from the snapshot.
+        JS_ASSERT(js_CodeSpec[*parent.pc()].format & JOF_INVOKE);
+
+        return (JSOp)*parent.pc() == JSOP_NEW;
+    }
+
+    return frame_->isConstructing();
+}
+
+bool
+IonFrameIterator::isConstructing() const
+{
+    IonFrameIterator parent(*this);
+
+    // Skip the current frame and look at the caller's.
+    do {
+        ++parent;
+    } while (!parent.done() && !parent.isScripted());
+
+    if (parent.isScripted()) {
+        // In the case of a JS frame, look up the pc from the snapshot.
+        InlineFrameIterator inlinedParent(&parent);
+        JS_ASSERT(js_CodeSpec[*inlinedParent.pc()].format & JOF_INVOKE);
+
+        return (JSOp)*inlinedParent.pc() == JSOP_NEW;
+    }
+
+    JS_ASSERT(parent.done());
+    return activation_->entryfp()->isConstructing();
+}
+
+JSObject *
+InlineFrameIterator::thisObject() const
+{
+    // JS_ASSERT(isConstructing(...));
+    SnapshotIterator s(si_);
+
+    // scopeChain
+    s.skip();
+
+    // In strict modes, |this| may not be an object and thus may not be
+    // readable which can either segv in read or trigger the assertion.
+    Value v = s.read();
+    JS_ASSERT(v.isObject());
+    return &v.toObject();
+}
+
+unsigned
+InlineFrameIterator::numActualArgs() const
+{
+    // Skip the current frame and look at the caller's.
+    if (more()) {
+        InlineFrameIterator parent(*this);
+        ++parent;
+
+        // In the case of a JS frame, look up the pc from the snapshot.
+        JS_ASSERT(js_CodeSpec[*parent.pc()].format & JOF_INVOKE);
+
+        return GET_ARGC(parent.pc());
+    }
+
+    return frame_->numActualArgs();
+}
+
+unsigned
+IonFrameIterator::numActualArgs() const
+{
+    IonFrameIterator parent(*this);
+
+    // Skip the current frame and look at the caller's.
+    do {
+        ++parent;
+    } while (!parent.done() && !parent.isScripted());
+
+    if (parent.isScripted()) {
+        // In the case of a JS frame, look up the pc from the snapshot.
+        InlineFrameIterator inlinedParent(&parent);
+        JS_ASSERT(js_CodeSpec[*inlinedParent.pc()].format & JOF_INVOKE);
+
+        return GET_ARGC(inlinedParent.pc());
+    }
+
+    JS_ASSERT(parent.done());
+    return activation_->entryfp()->numActualArgs();
+}

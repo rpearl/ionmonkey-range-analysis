@@ -367,8 +367,8 @@ class IonCacheBindName : public IonCache
     Register scopeChainReg() const {
         return u.bindname.scopeChain;
     }
-    PropertyName *name() const {
-        return u.bindname.name;
+    HandlePropertyName name() const {
+        return HandlePropertyName::fromMarkedLocation(&u.bindname.name);
     }
     Register outputReg() const {
         return u.bindname.output;
@@ -382,13 +382,14 @@ bool
 GetPropertyCache(JSContext *cx, size_t cacheIndex, JSObject *obj, Value *vp);
 
 bool
-SetPropertyCache(JSContext *cx, size_t cacheIndex, JSObject *obj, const Value &value);
+SetPropertyCache(JSContext *cx, size_t cacheIndex, HandleObject obj, HandleValue value,
+                 bool isSetName);
 
 bool
 GetElementCache(JSContext *cx, size_t cacheIndex, JSObject *obj, const Value &idval, Value *res);
 
 JSObject *
-BindNameCache(JSContext *cx, size_t cacheIndex, JSObject *scopeChain);
+BindNameCache(JSContext *cx, size_t cacheIndex, HandleObject scopeChain);
 
 } // namespace ion
 } // namespace js

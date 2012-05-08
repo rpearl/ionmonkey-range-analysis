@@ -42,9 +42,9 @@
 #define String_inl_h__
 
 #include "jscntxt.h"
-#include "jsgcmark.h"
 #include "jsprobes.h"
 
+#include "gc/Marking.h"
 #include "String.h"
 
 #include "jsgcinlines.h"
@@ -450,6 +450,8 @@ namespace js {
 static JS_ALWAYS_INLINE JSFixedString *
 NewShortString(JSContext *cx, const jschar *chars, size_t length)
 {
+    SkipRoot skip(cx, &chars);
+
     /*
      * Don't bother trying to find a static atom; measurement shows that not
      * many get here (for one, Atomize is catching them).

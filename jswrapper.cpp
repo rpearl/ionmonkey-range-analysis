@@ -41,18 +41,19 @@
 
 #include "jsapi.h"
 #include "jscntxt.h"
+#include "jscompartment.h"
 #include "jsexn.h"
 #include "jsgc.h"
-#include "jsgcmark.h"
 #include "jsiter.h"
 #include "jsnum.h"
 #include "jswrapper.h"
-#include "methodjit/PolyIC.h"
-#include "methodjit/MonoIC.h"
+
 #ifdef JS_METHODJIT
 # include "assembler/jit/ExecutableAllocator.h"
 #endif
-#include "jscompartment.h"
+#include "gc/Marking.h"
+#include "methodjit/PolyIC.h"
+#include "methodjit/MonoIC.h"
 
 #include "jsobjinlines.h"
 
@@ -521,7 +522,7 @@ ErrorCopier::~ErrorCopier()
         if (exc.isObject() && exc.toObject().isError() && exc.toObject().getPrivate()) {
             cx->clearPendingException();
             ac.leave();
-            JSObject *copyobj = js_CopyErrorObject(cx, &exc.toObject(), scope);
+            JSObject *copyobj = js_CopyErrorObject(cx, RootedVarObject(cx, &exc.toObject()), scope);
             if (copyobj)
                 cx->setPendingException(ObjectValue(*copyobj));
         }
@@ -636,15 +637,17 @@ CrossCompartmentWrapper::get(JSContext *cx, JSObject *wrapper, JSObject *receive
 }
 
 bool
-CrossCompartmentWrapper::set(JSContext *cx, JSObject *wrapper, JSObject *receiver, jsid id,
+CrossCompartmentWrapper::set(JSContext *cx, JSObject *wrapper_, JSObject *receiver_, jsid id_,
                              bool strict, Value *vp)
 {
-    AutoValueRooter tvr(cx, *vp);
+    RootedVarObject wrapper(cx, wrapper_), receiver(cx, receiver_);
+    RootedVarId id(cx, id_);
+    RootedVarValue value(cx, *vp);
     PIERCE(cx, wrapper, SET,
-           call.destination->wrap(cx, &receiver) &&
-           call.destination->wrapId(cx, &id) &&
-           call.destination->wrap(cx, tvr.addr()),
-           Wrapper::set(cx, wrapper, receiver, id, strict, tvr.addr()),
+           call.destination->wrap(cx, receiver.address()) &&
+           call.destination->wrapId(cx, id.address()) &&
+           call.destination->wrap(cx, value.address()),
+           Wrapper::set(cx, wrapper, receiver, id, strict, value.address()),
            NOTHING);
 }
 
@@ -737,8 +740,10 @@ CrossCompartmentWrapper::iterate(JSContext *cx, JSObject *wrapper, unsigned flag
 }
 
 bool
-CrossCompartmentWrapper::call(JSContext *cx, JSObject *wrapper, unsigned argc, Value *vp)
+CrossCompartmentWrapper::call(JSContext *cx, JSObject *wrapper_, unsigned argc, Value *vp)
 {
+    RootedVarObject wrapper(cx, wrapper_);
+
     AutoCompartment call(cx, wrappedObject(wrapper));
     if (!call.enter())
         return false;
@@ -759,9 +764,11 @@ CrossCompartmentWrapper::call(JSContext *cx, JSObject *wrapper, unsigned argc, V
 }
 
 bool
-CrossCompartmentWrapper::construct(JSContext *cx, JSObject *wrapper, unsigned argc, Value *argv,
+CrossCompartmentWrapper::construct(JSContext *cx, JSObject *wrapper_, unsigned argc, Value *argv,
                                    Value *rval)
 {
+    RootedVarObject wrapper(cx, wrapper_);
+
     AutoCompartment call(cx, wrappedObject(wrapper));
     if (!call.enter())
         return false;
@@ -1145,6 +1152,9 @@ js::NukeChromeCrossCompartmentWrappersForGlobal(JSContext *cx, JSObject *obj,
 
             JSObject *wobj = &e.front().value.get().toObject();
             JSObject *wrapped = UnwrapObject(wobj, false);
+
+            if (js::IsSystemCompartment(wrapped->compartment()))
+                continue; // Not interested in chrome->chrome wrappers.
 
             if (nukeGlobal == DontNukeForGlobalObject && wrapped == global)
                 continue;

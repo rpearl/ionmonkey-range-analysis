@@ -22,6 +22,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
+ *  Nicolas B. Pierron <nicolas.b.pierron@mozilla.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -176,7 +177,7 @@ IonBuilder::inlineNativeCall(JSFunction *target, uint32 argc, bool constructing)
             if (arg1Type == MIRType_Double && returnType == MIRType_Int32) {
                 if (!discardCall(argc, argv, current))
                     return false;
-                MRound *ins = new MRound(argv[1], MRound::RoundingMode_Floor);
+                MFloor *ins = new MFloor(argv[1]);
                 current->add(ins);
                 current->push(ins);
                 return true;
@@ -194,7 +195,7 @@ IonBuilder::inlineNativeCall(JSFunction *target, uint32 argc, bool constructing)
             if (arg1Type == MIRType_Double && returnType == MIRType_Int32) {
                 if (!discardCall(argc, argv, current))
                     return false;
-                MRound *ins = new MRound(argv[1], MRound::RoundingMode_Round);
+                MRound *ins = new MRound(argv[1]);
                 current->add(ins);
                 current->push(ins);
                 return true;
