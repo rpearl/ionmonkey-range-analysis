@@ -896,46 +896,29 @@ CodeGeneratorARM::visitMathD(LMathD *math)
 }
 
 bool
+CodeGeneratorARM::visitFloor(LFloor *lir)
+{
+    FloatRegister input = ToFloatRegister(lir->input());
+    Register output = ToRegister(lir->output());
+    Label bail;
+    masm.floor(input, output, &bail);
+    if (!bailoutFrom(&bail, lir->snapshot()))
+        return false;
+    return true;
+}
+
+bool
 CodeGeneratorARM::visitRound(LRound *lir)
 {
     FloatRegister input = ToFloatRegister(lir->input());
     Register output = ToRegister(lir->output());
-
-    if (!lir->snapshot())
+    FloatRegister tmp = ToFloatRegister(lir->temp());
+    Label bail;
+    // Output is either correct, or clamped.  All -0 cases have been translated to a clamped
+    // case.a
+    masm.round(input, output, &bail, tmp);
+    if (!bailoutFrom(&bail, lir->snapshot()))
         return false;
-
-    Label belowZero, end, fail;
-    if (lir->mir()->mode() == MRound::RoundingMode_Round) {
-        // round(x) == floor(x + 0.5)
-        masm.ma_vimm(0.5, ScratchFloatReg);
-        masm.ma_vadd(ScratchFloatReg, input, input);
-    }
-
-    //              +2  +1.5  +1  +0.5  +0  -0.5  -1  -1.5  -2
-    // vcvt:          }-------> }-------><-------{ <-------{
-    // floor:         }-------> }-------> }-------> }------->
-
-    masm.ma_vcmpz(input);
-    masm.as_vmrs(pc);
-    masm.ma_b(&belowZero, Assembler::VFP_LessThanOrEqual);
-
-    // input > 0
-    emitRoundDouble(input, output, &fail);
-    masm.jump(&end);
-
-    masm.bind(&fail);
-    if (!bailoutIf(Assembler::Always, lir->snapshot()))
-        return false;
-
-    // input =< 0
-    masm.bind(&belowZero);
-    masm.ma_vneg(input, input);
-    emitRoundDouble(input, output, &fail);
-    masm.ma_rsb(Imm32(0), output, SetCond); // neg
-    // We also need to bailout for '-0'.
-    if (!bailoutIf(Assembler::Equal, lir->snapshot()))
-        return false;
-    masm.bind(&end);
     return true;
 }
 
@@ -1161,7 +1144,7 @@ CodeGeneratorARM::visitCompareD(LCompareD *comp)
     FloatRegister rhs = ToFloatRegister(comp->right());
 
     Assembler::DoubleCondition cond = JSOpToDoubleCondition(comp->jsop());
-    masm.compareDouble(cond, lhs, rhs);
+    masm.compareDouble(lhs, rhs);
     emitSet(Assembler::ConditionFromDoubleCondition(cond), ToRegister(comp->output()));
     return false;
 }
@@ -1173,7 +1156,7 @@ CodeGeneratorARM::visitCompareDAndBranch(LCompareDAndBranch *comp)
     FloatRegister rhs = ToFloatRegister(comp->right());
 
     Assembler::DoubleCondition cond = JSOpToDoubleCondition(comp->jsop());
-    masm.compareDouble(cond, lhs, rhs);
+    masm.compareDouble(lhs, rhs);
     emitBranch(Assembler::ConditionFromDoubleCondition(cond), comp->ifTrue(), comp->ifFalse());
     return true;
 }
@@ -1258,7 +1241,7 @@ CodeGeneratorARM::visitStoreSlotT(LStoreSlotT *store)
     MIRType valueType = store->mir()->value()->type();
 
     if (store->mir()->needsBarrier())
-        masm.emitPreBarrier(Address(base, offset), ValueTypeFromMIRType(store->mir()->slotType()));
+        masm.emitPreBarrier(Address(base, offset), store->mir()->slotType());
 
     if (valueType == MIRType_Double) {
         masm.ma_vstr(ToFloatRegister(value), Operand(base, offset));

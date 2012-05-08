@@ -67,7 +67,7 @@ using namespace js;
 using namespace js::gc;
 
 bool
-PropertyTable::init(JSRuntime *rt, Shape *lastProp)
+ShapeTable::init(JSRuntime *rt, Shape *lastProp)
 {
     /*
      * Either we're creating a table for a large scope that was populated
@@ -82,7 +82,7 @@ PropertyTable::init(JSRuntime *rt, Shape *lastProp)
 
     /*
      * Use rt->calloc_ for memory accounting and overpressure handling
-     * without OOM reporting. See PropertyTable::change.
+     * without OOM reporting. See ShapeTable::change.
      */
     entries = (Shape **) rt->calloc_(sizeOfEntries(JS_BIT(sizeLog2)));
     if (!entries)
@@ -154,7 +154,7 @@ Shape::hashify(JSContext *cx)
         return false;
 
     JSRuntime *rt = cx->runtime;
-    PropertyTable *table = rt->new_<PropertyTable>(self->entryCount());
+    ShapeTable *table = rt->new_<ShapeTable>(self->entryCount());
     if (!table)
         return false;
 
@@ -175,7 +175,7 @@ Shape::hashify(JSContext *cx)
 #define HASH2(hash0,log2,shift) ((((hash0) << (log2)) >> (shift)) | 1)
 
 Shape **
-PropertyTable::search(jsid id, bool adding)
+ShapeTable::search(jsid id, bool adding)
 {
     JSHashNumber hash0, hash1, hash2;
     int sizeLog2;
@@ -253,7 +253,7 @@ PropertyTable::search(jsid id, bool adding)
 }
 
 bool
-PropertyTable::change(int log2Delta, JSContext *cx)
+ShapeTable::change(int log2Delta, JSContext *cx)
 {
     JS_ASSERT(entries);
 
@@ -291,7 +291,7 @@ PropertyTable::change(int log2Delta, JSContext *cx)
 }
 
 bool
-PropertyTable::grow(JSContext *cx)
+ShapeTable::grow(JSContext *cx)
 {
     JS_ASSERT(needsToGrow());
 
@@ -542,7 +542,9 @@ JSObject::addPropertyInternal(JSContext *cx, jsid id,
     RootId idRoot(cx, &id);
     RootedVarObject self(cx, this);
 
-    PropertyTable *table = NULL;
+    RootGetterSetter gsRoot(cx, attrs, &getter, &setter);
+
+    ShapeTable *table = NULL;
     if (!inDictionaryMode()) {
         bool stableSlot =
             (slot == SHAPE_INVALID_SLOT) ||
@@ -650,6 +652,7 @@ JSObject::putProperty(JSContext *cx, jsid id,
     NormalizeGetterAndSetter(cx, this, id, attrs, flags, getter, setter);
 
     RootedVarObject self(cx, this);
+    RootGetterSetter gsRoot(cx, attrs, &getter, &setter);
 
     /* Search for id in order to claim its entry if table has been allocated. */
     Shape **spp;
@@ -861,21 +864,21 @@ JSObject::removeProperty(JSContext *cx, jsid id)
      * return deleted DictionaryShapes! See bug 595365. Do this before changing
      * the object or table, so the remaining removal is infallible.
      */
-    Shape *spare = NULL;
+    RootedVarShape spare(cx);
     if (self->inDictionaryMode()) {
         spare = js_NewGCShape(cx);
         if (!spare)
             return false;
         new (spare) Shape(shape->base()->unowned(), 0);
-        if (shape == lastProperty()) {
+        if (shape == self->lastProperty()) {
             /*
              * Get an up to date unowned base shape for the new last property
              * when removing the dictionary's last property. Information in
              * base shapes for non-last properties may be out of sync with the
              * object's state.
              */
-            Shape *previous = lastProperty()->parent;
-            StackBaseShape base(lastProperty()->base());
+            RootedVarShape previous(cx, self->lastProperty()->parent);
+            StackBaseShape base(self->lastProperty()->base());
             base.updateGetterSetter(previous->attrs, previous->getter(), previous->setter());
             BaseShape *nbase = BaseShape::getUnowned(cx, base);
             if (!nbase)
@@ -896,7 +899,7 @@ JSObject::removeProperty(JSContext *cx, jsid id)
      * list and hash in place.
      */
     if (self->inDictionaryMode()) {
-        PropertyTable &table = self->lastProperty()->table();
+        ShapeTable &table = self->lastProperty()->table();
 
         if (SHAPE_HAD_COLLISION(*spp)) {
             *spp = SHAPE_REMOVED;
@@ -930,11 +933,11 @@ JSObject::removeProperty(JSContext *cx, jsid id)
 
         /* Consider shrinking table if its load factor is <= .25. */
         uint32_t size = table.capacity();
-        if (size > PropertyTable::MIN_SIZE && table.entryCount <= size >> 2)
+        if (size > ShapeTable::MIN_SIZE && table.entryCount <= size >> 2)
             (void) table.change(-1, cx);
     } else {
         /*
-         * Non-dictionary-mode property tables are shared immutables, so all we
+         * Non-dictionary-mode shape tables are shared immutables, so all we
          * need do is retract the last property and we'll either get or else
          * lazily make via a later hashify the exact table for the new property
          * lineage.
@@ -1009,7 +1012,7 @@ JSObject::replaceWithNewEquivalentShape(JSContext *cx, Shape *oldShape, Shape *n
         new (newShape) Shape(oldShape->base()->unowned(), 0);
     }
 
-    PropertyTable &table = self->lastProperty()->table();
+    ShapeTable &table = self->lastProperty()->table();
     Shape **spp = oldShape->isEmptyShape()
                   ? NULL
                   : table.search(oldShape->propidRef(), false);
@@ -1041,31 +1044,31 @@ JSObject::shadowingShapeChange(JSContext *cx, const Shape &shape)
 bool
 JSObject::clearParent(JSContext *cx)
 {
-    return setParent(cx, NULL);
+    return setParent(cx, RootedVarObject(cx, this), RootedVarObject(cx));
 }
 
-bool
-JSObject::setParent(JSContext *cx, JSObject *parent)
+/* static */ bool
+JSObject::setParent(JSContext *cx, HandleObject obj, HandleObject parent)
 {
     if (parent && !parent->setDelegate(cx))
         return false;
 
-    if (inDictionaryMode()) {
-        StackBaseShape base(lastProperty());
+    if (obj->inDictionaryMode()) {
+        StackBaseShape base(obj->lastProperty());
         base.parent = parent;
         UnownedBaseShape *nbase = BaseShape::getUnowned(cx, base);
         if (!nbase)
             return false;
 
-        lastProperty()->base()->adoptUnowned(nbase);
+        obj->lastProperty()->base()->adoptUnowned(nbase);
         return true;
     }
 
-    Shape *newShape = Shape::setObjectParent(cx, parent, getProto(), shape_);
+    Shape *newShape = Shape::setObjectParent(cx, parent, obj->getProto(), obj->shape_);
     if (!newShape)
         return false;
 
-    shape_ = newShape;
+    obj->shape_ = newShape;
     return true;
 }
 
@@ -1394,7 +1397,7 @@ EmptyShape::insertInitialShape(JSContext *cx, Shape *shape, JSObject *proto)
      * the appropriate properties if found. Clearing the cache entry avoids
      * this duplicate regeneration.
      */
-    cx->compartment->newObjectCache.invalidateEntriesForShape(cx, shape, proto);
+    cx->runtime->newObjectCache.invalidateEntriesForShape(cx, shape, proto);
 }
 
 void

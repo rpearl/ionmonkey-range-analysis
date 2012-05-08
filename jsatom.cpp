@@ -54,7 +54,6 @@
 #include "jsatom.h"
 #include "jscntxt.h"
 #include "jsgc.h"
-#include "jsgcmark.h"
 #include "jslock.h"
 #include "jsnum.h"
 #include "jsstr.h"
@@ -62,6 +61,7 @@
 #include "jsxml.h"
 
 #include "frontend/Parser.h"
+#include "gc/Marking.h"
 
 #include "jsstrinlines.h"
 #include "jsatominlines.h"
@@ -339,6 +339,8 @@ AtomizeInline(JSContext *cx, const jschar **pchars, size_t length,
     SwitchToCompartment sc(cx, cx->runtime->atomsCompartment);
 
     JSFixedString *key;
+
+    SkipRoot skip(cx, &chars);
 
     if (ocb == TakeCharOwnership) {
         key = js_NewString(cx, const_cast<jschar *>(chars), length);
@@ -665,14 +667,18 @@ bool
 js::XDRAtom(XDRState<mode> *xdr, JSAtom **atomp)
 {
     if (mode == XDR_ENCODE) {
-        JSString *str = *atomp;
-        return xdr->codeString(&str);
+        uint32_t nchars = (*atomp)->length();
+        if (!xdr->codeUint32(&nchars))
+            return false;
+
+        jschar *chars = const_cast<jschar *>((*atomp)->getChars(xdr->cx()));
+        if (!chars)
+            return false;
+
+        return xdr->codeChars(chars, nchars);
     }
 
-    /*
-     * Inline XDRState::codeString when decoding to avoid JSString allocation
-     * for already existing atoms. See bug 321985.
-     */
+    /* Avoid JSString allocation for already existing atoms. See bug 321985. */
     uint32_t nchars;
     if (!xdr->codeUint32(&nchars))
         return false;

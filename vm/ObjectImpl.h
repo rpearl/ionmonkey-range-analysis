@@ -226,6 +226,14 @@ struct PropDesc {
 
     bool wrapInto(JSContext *cx, JSObject *obj, const jsid &id, jsid *wrappedId,
                   PropDesc *wrappedDesc) const;
+
+    struct StackRoot {
+        StackRoot(JSContext *cx, PropDesc *pd)
+          : pdRoot(cx, &pd->pd_), valueRoot(cx, &pd->value_),
+            getRoot(cx, &pd->get_), setRoot(cx, &pd->set_)
+        {}
+        RootValue pdRoot, valueRoot, getRoot, setRoot;
+    };
 };
 
 class DenseElementsHeader;
@@ -470,9 +478,6 @@ template<typename T> static inline const bool TypeIsUnsigned() { return false; }
 template<> inline const bool TypeIsUnsigned<uint8_t>() { return true; }
 template<> inline const bool TypeIsUnsigned<uint16_t>() { return true; }
 template<> inline const bool TypeIsUnsigned<uint32_t>() { return true; }
-
-template<typename T> static inline const bool TypeIsUint8Clamped() { return false; }
-template<> inline const bool TypeIsUint8Clamped<uint8_clamped>() { return true; }
 
 template <typename T>
 class TypedElementsHeader : public ElementsHeader

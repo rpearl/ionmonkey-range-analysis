@@ -741,7 +741,7 @@ Options(JSContext *cx, unsigned argc, jsval *vp)
 static JSBool
 Load(JSContext *cx, unsigned argc, jsval *vp)
 {
-    JSObject *thisobj = JS_THIS_OBJECT(cx, vp);
+    RootedVarObject thisobj(cx, JS_THIS_OBJECT(cx, vp));
     if (!thisobj)
         return JS_FALSE;
 
@@ -1663,7 +1663,7 @@ TryNotes(JSContext *cx, JSScript *script, Sprinter *sp)
 {
     JSTryNote *tn, *tnlimit;
 
-    if (!JSScript::isValidOffset(script->trynotesOffset))
+    if (!script->hasTrynotes())
         return JS_TRUE;
 
     tn = script->trynotes()->vector;
@@ -1700,13 +1700,15 @@ DisassembleScript(JSContext *cx, JSScript *script, JSFunction *fun, bool lines, 
         Sprint(sp, "\n");
     }
 
+    Root<JSScript*> scriptRoot(cx, &script);
+
     if (!js_Disassemble(cx, script, lines, sp))
         return false;
     SrcNotes(cx, script, sp);
     TryNotes(cx, script, sp);
 
-    if (recursive && JSScript::isValidOffset(script->objectsOffset)) {
-        JSObjectArray *objects = script->objects();
+    if (recursive && script->hasObjects()) {
+        ObjectArray *objects = script->objects();
         for (unsigned i = 0; i != objects->length; ++i) {
             JSObject *obj = objects->vector[i];
             if (obj->isFunction()) {
@@ -1965,43 +1967,6 @@ DisassWithSrc(JSContext *cx, unsigned argc, jsval *vp)
 #undef LINE_BUF_LEN
 }
 
-static void
-DumpScope(JSContext *cx, JSObject *obj, FILE *fp)
-{
-    unsigned i = 0;
-    for (JSScopeProperty *sprop = NULL; JS_PropertyIterator(obj, &sprop);) {
-        fprintf(fp, "%3u %p ", i++, (void *) sprop);
-        ((Shape *) sprop)->dump(cx, fp);
-    }
-}
-
-static JSBool
-DumpStats(JSContext *cx, unsigned argc, jsval *vp)
-{
-    jsval *argv = JS_ARGV(cx, vp);
-    for (unsigned i = 0; i < argc; i++) {
-        JSString *str = JS_ValueToString(cx, argv[i]);
-        if (!str)
-            return JS_FALSE;
-        argv[i] = STRING_TO_JSVAL(str);
-        JSFlatString *flatStr = JS_FlattenString(cx, str);
-        if (!flatStr)
-            return JS_FALSE;
-        if (JS_FlatStringEqualsAscii(flatStr, "atom")) {
-            js_DumpAtoms(cx, gOutFile);
-        } else if (JS_FlatStringEqualsAscii(flatStr, "global")) {
-            DumpScope(cx, cx->globalObject, stdout);
-        } else {
-            fputs("js: invalid stats argument ", gErrFile);
-            JS_FileEscapedString(gErrFile, str, 0);
-            putc('\n', gErrFile);
-            continue;
-        }
-    }
-    JS_SET_RVAL(cx, vp, JSVAL_VOID);
-    return JS_TRUE;
-}
-
 static JSBool
 DumpHeap(JSContext *cx, unsigned argc, jsval *vp)
 {
@@ -2128,15 +2093,15 @@ DumpObject(JSContext *cx, unsigned argc, jsval *vp)
 JSBool
 DumpStack(JSContext *cx, unsigned argc, Value *vp)
 {
-    JSObject *arr = JS_NewArrayObject(cx, 0, NULL);
+    RootedVarObject arr(cx, JS_NewArrayObject(cx, 0, NULL));
     if (!arr)
         return false;
 
-    JSString *evalStr = JS_NewStringCopyZ(cx, "eval-code");
+    RootedVarString evalStr(cx, JS_NewStringCopyZ(cx, "eval-code"));
     if (!evalStr)
         return false;
 
-    JSString *globalStr = JS_NewStringCopyZ(cx, "global-code");
+    RootedVarString globalStr(cx, JS_NewStringCopyZ(cx, "global-code"));
     if (!globalStr)
         return false;
 
@@ -2300,22 +2265,6 @@ BuildDate(JSContext *cx, unsigned argc, jsval *vp)
     fprintf(gOutFile, "built on %s at %s%s", __DATE__, __TIME__, version);
     *vp = JSVAL_VOID;
     return JS_TRUE;
-}
-
-static JSBool
-Clear(JSContext *cx, unsigned argc, jsval *vp)
-{
-    JSObject *obj;
-    if (argc == 0) {
-        obj = JS_GetGlobalForScopeChain(cx);
-        if (!obj)
-            return false;
-    } else if (!JS_ValueToObject(cx, JS_ARGV(cx, vp)[0], &obj)) {
-        return false;
-    }
-    JS_ClearScope(cx, obj);
-    JS_SET_RVAL(cx, vp, JSVAL_VOID);
-    return true;
 }
 
 static JSBool
@@ -2530,8 +2479,10 @@ typedef struct ComplexObject {
 } ComplexObject;
 
 static JSBool
-sandbox_enumerate(JSContext *cx, JSObject *obj)
+sandbox_enumerate(JSContext *cx, JSObject *obj_)
 {
+    RootedVarObject obj(cx, obj_);
+
     jsval v;
     JSBool b;
 
@@ -2543,9 +2494,12 @@ sandbox_enumerate(JSContext *cx, JSObject *obj)
 }
 
 static JSBool
-sandbox_resolve(JSContext *cx, JSObject *obj, jsid id, unsigned flags,
+sandbox_resolve(JSContext *cx, JSObject *obj_, jsid id_, unsigned flags,
                 JSObject **objp)
 {
+    RootedVarObject obj(cx, obj_);
+    RootedVarId id(cx, id_);
+
     jsval v;
     JSBool b, resolved;
 
@@ -2577,7 +2531,7 @@ static JSClass sandbox_class = {
 static JSObject *
 NewSandbox(JSContext *cx, bool lazy)
 {
-    JSObject *obj = JS_NewCompartmentAndGlobalObject(cx, &sandbox_class, NULL);
+    RootedVarObject obj(cx, JS_NewCompartmentAndGlobalObject(cx, &sandbox_class, NULL));
     if (!obj)
         return NULL;
 
@@ -2589,12 +2543,12 @@ NewSandbox(JSContext *cx, bool lazy)
         if (!lazy && !JS_InitStandardClasses(cx, obj))
             return NULL;
 
-        AutoValueRooter root(cx, BooleanValue(lazy));
-        if (!JS_SetProperty(cx, obj, "lazy", root.jsval_addr()))
+        RootedVarValue value(cx, BooleanValue(lazy));
+        if (!JS_SetProperty(cx, obj, "lazy", value.address()))
             return NULL;
     }
 
-    if (!cx->compartment->wrap(cx, &obj))
+    if (!cx->compartment->wrap(cx, obj.address()))
         return NULL;
     return obj;
 }
@@ -2611,6 +2565,8 @@ EvalInContext(JSContext *cx, unsigned argc, jsval *vp)
     const jschar *src = JS_GetStringCharsAndLength(cx, str, &srclen);
     if (!src)
         return false;
+
+    SkipRoot skip(cx, &src);
 
     bool lazy = false;
     if (srclen == 4) {
@@ -3415,24 +3371,23 @@ Serialize(JSContext *cx, unsigned argc, jsval *vp)
 JSBool
 Deserialize(JSContext *cx, unsigned argc, jsval *vp)
 {
-    jsval v = argc > 0 ? JS_ARGV(cx, vp)[0] : JSVAL_VOID;
+    RootedVar<jsval> v(cx, argc > 0 ? JS_ARGV(cx, vp)[0] : JSVAL_VOID);
     JSObject *obj;
     if (JSVAL_IS_PRIMITIVE(v) || !(obj = JSVAL_TO_OBJECT(v))->isTypedArray()) {
         JS_ReportErrorNumber(cx, my_GetErrorMessage, NULL, JSSMSG_INVALID_ARGS, "deserialize");
         return false;
     }
-    JSObject *array = TypedArray::getTypedArray(obj);
-    if ((TypedArray::getByteLength(array) & 7) != 0) {
+    if ((TypedArray::getByteLength(obj) & 7) != 0) {
         JS_ReportErrorNumber(cx, my_GetErrorMessage, NULL, JSSMSG_INVALID_ARGS, "deserialize");
         return false;
     }
-    if ((uintptr_t(TypedArray::getDataOffset(array)) & 7) != 0) {
+    if ((uintptr_t(TypedArray::getDataOffset(obj)) & 7) != 0) {
         JS_ReportErrorNumber(cx, my_GetErrorMessage, NULL, JSSMSG_BAD_ALIGNMENT);
         return false;
     }
 
-    if (!JS_ReadStructuredClone(cx, (uint64_t *) TypedArray::getDataOffset(array), TypedArray::getByteLength(array),
-                                JS_STRUCTURED_CLONE_VERSION, &v, NULL, NULL)) {
+    if (!JS_ReadStructuredClone(cx, (uint64_t *) TypedArray::getDataOffset(obj), TypedArray::getByteLength(obj),
+                                JS_STRUCTURED_CLONE_VERSION, v.address(), NULL, NULL)) {
         return false;
     }
     JS_SET_RVAL(cx, vp, v);
@@ -3653,10 +3608,6 @@ static JSFunctionSpecWithHelp shell_functions[] = {
 "notes([fun])",
 "  Show source notes for functions."),
 
-    JS_FN_HELP("stats", DumpStats, 1, 0,
-"stats([string ...])",
-"  Dump 'atom' or 'global' stats."),
-
     JS_FN_HELP("findReferences", FindReferences, 1, 0,
 "findReferences(target)",
 "  Walk the entire heap, looking for references to |target|, and return a\n"
@@ -3696,10 +3647,6 @@ static JSFunctionSpecWithHelp shell_functions[] = {
     JS_FN_HELP("build", BuildDate, 0, 0,
 "build()",
 "  Show build date and time."),
-
-    JS_FN_HELP("clear", Clear, 0, 0,
-"clear([obj])",
-"  Clear properties of object."),
 
     JS_FN_HELP("intern", Intern, 1, 0,
 "intern(str)",

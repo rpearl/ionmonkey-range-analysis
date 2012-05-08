@@ -46,6 +46,7 @@
 #include "IonCaches.h"
 #include "IonLinker.h"
 #include "IonSpewer.h"
+#include "VMFunctions.h"
 
 #include "jsinterpinlines.h"
 
@@ -270,14 +271,21 @@ IsCacheableGetProp(JSObject *obj, JSObject *holder, const Shape *shape)
 bool
 js::ion::GetPropertyCache(JSContext *cx, size_t cacheIndex, JSObject *obj, Value *vp)
 {
-    JSScript *script = GetTopIonJSScript(cx);
-    IonScript *ion = script->ionScript();
+    JSScript *topScript = GetTopIonJSScript(cx);
+    IonScript *ion = topScript->ionScript();
 
     IonCacheGetProperty &cache = ion->getCache(cacheIndex).toGetProperty();
     JSAtom *atom = cache.atom();
 
+    JSScript *script;
+    jsbytecode *pc;
+    cache.getScriptedLocation(&script, &pc);
+
+    // Root the object.
+    RootedVarObject objRoot(cx, obj);
+
     // Override the return value if we are invalidated (bug 728188).
-    AutoDetectInvalidation adi(cx, vp, script);
+    AutoDetectInvalidation adi(cx, vp, topScript);
 
     // For now, just stop generating new stubs once we hit the stub count
     // limit. Once we can make calls from within generated stubs, a new call
@@ -300,15 +308,20 @@ js::ion::GetPropertyCache(JSContext *cx, size_t cacheIndex, JSObject *obj, Value
         }
     }
 
-    if (!obj->getGeneric(cx, obj, ATOM_TO_JSID(atom), vp))
+    jsid id = ATOM_TO_JSID(atom);
+    if (!obj->getGeneric(cx, obj, id, vp))
         return false;
 
-    {
-        JSScript *script;
-        jsbytecode *pc;
-        cache.getScriptedLocation(&script, &pc);
-        types::TypeScript::Monitor(cx, script, pc, *vp);
+#if JS_HAS_NO_SUCH_METHOD
+    // Handle objects with __noSuchMethod__.
+    if (JSOp(*pc) == JSOP_CALLPROP && JS_UNLIKELY(vp->isPrimitive())) {
+        if (!OnUnknownMethod(cx, objRoot, IdToValue(id), vp))
+            return false;
     }
+#endif
+
+    // Monitor changes to cache entry.
+    types::TypeScript::Monitor(cx, script, pc, *vp);
 
     return true;
 }
@@ -449,11 +462,61 @@ IonCacheSetProperty::attachNativeAdding(JSContext *cx, JSObject *obj, const Shap
 }
 
 static bool
-IsEligibleForInlinePropertyAdd(JSContext *cx, JSObject *obj, jsid propId, uint32_t oldSlots,
-                               const Shape **propShapeOut)
+IsPropertyInlineable(JSObject *obj, IonCacheSetProperty &cache)
 {
-    const Shape *propShape = obj->nativeLookup(cx, propId);
-    if (!propShape || propShape->inDictionary() || !propShape->hasSlot() || !propShape->hasDefaultSetter())
+    // Stop generating new stubs once we hit the stub count limit, see
+    // GetPropertyCache.
+    if (cache.stubCount() >= MAX_STUBS)
+        return false;
+
+    if (!obj->isNative())
+        return false;
+
+    if (obj->watched())
+        return false;
+
+    return true;
+}
+
+static bool
+IsPropertySetInlineable(JSContext *cx, HandleObject obj, JSAtom *atom, jsid *pId, const Shape **pShape)
+{
+    jsid id = ATOM_TO_JSID(atom);
+    id = js_CheckForStringIndex(id);
+    *pId = id;
+
+    const Shape *shape = obj->nativeLookup(cx, id);
+    *pShape = shape;
+
+    if (!shape)
+        return false;
+
+    if (!shape->hasSlot())
+        return false;
+
+    if (!shape->hasDefaultSetter())
+        return false;
+
+    if (!shape->writable())
+        return false;
+
+    return true;
+}
+
+static bool
+IsPropertyAddInlineable(JSContext *cx, HandleObject obj, jsid id, uint32_t oldSlots,
+                       const Shape **pShape)
+{
+    // This is not a Add, the property exists.
+    if (*pShape)
+        return false;
+
+    const Shape *shape = obj->nativeLookup(cx, id);
+    if (!shape || shape->inDictionary() || !shape->hasSlot() || !shape->hasDefaultSetter())
+        return false;
+
+    // If object has a non-default resolve hook, don't inline
+    if (obj->getClass()->resolve != JS_ResolveStub)
         return false;
 
     // walk up the object prototype chain and ensure that all prototypes
@@ -461,13 +524,18 @@ IsEligibleForInlinePropertyAdd(JSContext *cx, JSObject *obj, jsid propId, uint32
     // defined on the property
     for (JSObject *proto = obj->getProto(); proto; proto = proto->getProto()) {
         // if prototype is non-native, don't optimize
-        if (!proto->isNative()) 
+        if (!proto->isNative())
             return false;
 
         // if prototype defines this property in a non-plain way, don't optimize
-        const Shape *protoShape = proto->nativeLookup(cx, propId);
+        const Shape *protoShape = proto->nativeLookup(cx, id);
         if (protoShape && !protoShape->hasDefaultSetter())
             return false;
+
+        // Otherise, if there's no such property, watch out for a resolve hook that would need
+        // to be invoked and thus prevent inlining of property addition.
+        if (proto->getClass()->resolve != JS_ResolveStub)
+             return false;
     }
 
     // Only add a IC entry if the dynamic slots didn't change when the shapes
@@ -476,57 +544,44 @@ IsEligibleForInlinePropertyAdd(JSContext *cx, JSObject *obj, jsid propId, uint32
     if (obj->numDynamicSlots() != oldSlots)
         return false;
 
-    *propShapeOut = propShape;
-
+    *pShape = shape;
     return true;
 }
 
 bool
-js::ion::SetPropertyCache(JSContext *cx, size_t cacheIndex, JSObject *obj, const Value& value)
+js::ion::SetPropertyCache(JSContext *cx, size_t cacheIndex, HandleObject obj, HandleValue value,
+                          bool isSetName)
 {
     IonScript *ion = GetTopIonJSScript(cx)->ion;
     IonCacheSetProperty &cache = ion->getCache(cacheIndex).toSetProperty();
     JSAtom *atom = cache.atom();
-    Value v = value;
-    // Stop generating new stubs once we hit the stub count limit, see
-    // GetPropertyCache.
-    if (cache.stubCount() < MAX_STUBS &&
-        obj->isNative() &&
-        !obj->watched())
-    {
+    jsid id;
+    const Shape *shape = NULL;
+
+    bool inlinable = IsPropertyInlineable(obj, cache);
+    if (inlinable && IsPropertySetInlineable(cx, obj, atom, &id, &shape)) {
         cache.incrementStubCount();
-
-        jsid id = ATOM_TO_JSID(atom);
-        id = js_CheckForStringIndex(id);
-
-        const Shape *shape = obj->nativeLookup(cx, id);
-        if (shape && shape->hasSlot() && shape->hasDefaultSetter()) {
-            if (!cache.attachNativeExisting(cx, obj, shape))
-                return false;
-        } else if (!shape) {
-            uint32_t oldSlots = obj->numDynamicSlots();
-            const Shape *oldShape = obj->lastProperty();
-
-            // try adding slot manually and seeing if it produces a usable shape
-            // for inlining via IC.
-            if (!obj->setGeneric(cx, ATOM_TO_JSID(atom), &v, cache.strict()))
-                return false;
-
-            const Shape *propShape = NULL;
-            if (IsEligibleForInlinePropertyAdd(cx, obj, id, oldSlots, &propShape)) {
-                const Shape *newShape = obj->lastProperty();
-                if (!cache.attachNativeAdding(cx, obj, oldShape, newShape, propShape))
-                    return false;
-            }
-
-            // Return true here because we've already done the setGeneric.  Don't want
-            // to fall through and call setGeneric again (both for performance reasons,
-            // and because the double-set may be non-idempotent).
-            return true;
-        }
+        if (!cache.attachNativeExisting(cx, obj, shape))
+            return false;
     }
 
-    return obj->setGeneric(cx, ATOM_TO_JSID(atom), &v, cache.strict());
+    uint32_t oldSlots = obj->numDynamicSlots();
+    const Shape *oldShape = obj->lastProperty();
+
+    // Set/Add the property on the object, the inlined cache are setup for the next execution.
+    if (!SetProperty(cx, obj, atom, value, cache.strict(), isSetName))
+        return false;
+
+    // The property did not exists before, now we can try again to inline the
+    // procedure which is adding the property.
+    if (inlinable && IsPropertyAddInlineable(cx, obj, id, oldSlots, &shape)) {
+        const Shape *newShape = obj->lastProperty();
+        cache.incrementStubCount();
+        if (!cache.attachNativeAdding(cx, obj, oldShape, newShape, shape))
+            return false;
+    }
+
+    return true;
 }
 
 bool
@@ -840,11 +895,11 @@ IsCacheableScopeChain(JSObject *scopeChain, JSObject *holder)
 }
 
 JSObject *
-js::ion::BindNameCache(JSContext *cx, size_t cacheIndex, JSObject *scopeChain)
+js::ion::BindNameCache(JSContext *cx, size_t cacheIndex, HandleObject scopeChain)
 {
     IonScript *ion = GetTopIonJSScript(cx)->ionScript();
     IonCacheBindName &cache = ion->getCache(cacheIndex).toBindName();
-    PropertyName *name = cache.name();
+    HandlePropertyName name = cache.name();
 
     JSObject *holder;
     if (scopeChain->isGlobal()) {

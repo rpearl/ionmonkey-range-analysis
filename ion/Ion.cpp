@@ -61,7 +61,7 @@
 #elif defined(JS_CPU_ARM)
 # include "arm/Lowering-arm.h"
 #endif
-#include "jsgcmark.h"
+#include "gc/Marking.h"
 #include "jsgcinlines.h"
 #include "jsinferinlines.h"
 #include "jsobjinlines.h"
@@ -158,7 +158,7 @@ IonCompartment::IonCompartment()
 bool
 IonCompartment::initialize(JSContext *cx)
 {
-    execAlloc_ = cx->runtime->getExecutableAllocator(cx);
+    execAlloc_ = cx->runtime->getExecAlloc(cx);
     if (!execAlloc_)
         return false;
 
@@ -1022,7 +1022,7 @@ InvalidateActivation(FreeOp *fop, uint8 *ionTop, bool invalidateAll)
 
     size_t frameno = 1;
 
-    for (IonFrameIterator it(ionTop); it.more(); ++it, ++frameno) {
+    for (IonFrameIterator it(ionTop); !it.done(); ++it, ++frameno) {
         JS_ASSERT_IF(frameno == 1, it.type() == IonFrame_Exit);
 
 #ifdef DEBUG

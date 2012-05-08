@@ -374,7 +374,7 @@ CodeGenerator::visitStoreSlotV(LStoreSlotV *store)
     const ValueOperand value = ToValue(store, LStoreSlotV::Value);
 
     if (store->mir()->needsBarrier())
-       masm.emitPreBarrier(Address(base, offset), JSVAL_TYPE_UNKNOWN);
+       masm.emitPreBarrier(Address(base, offset), MIRType_Value);
 
     masm.storeValue(value, Address(base, offset));
     return true;
@@ -1142,7 +1142,7 @@ CodeGenerator::visitAbsI(LAbsI *ins)
 bool
 CodeGenerator::visitBinaryV(LBinaryV *lir)
 {
-    typedef bool (*pf)(JSContext *, const Value &, const Value &, Value *);
+    typedef bool (*pf)(JSContext *, HandleValue, HandleValue, Value *);
     static const VMFunction AddInfo = FunctionInfo<pf>(js::AddValues);
     static const VMFunction SubInfo = FunctionInfo<pf>(js::SubValues);
     static const VMFunction MulInfo = FunctionInfo<pf>(js::MulValues);
@@ -1872,7 +1872,7 @@ CodeGenerator::visitIteratorStart(LIteratorStart *lir)
     JS_ASSERT(flags == JSITER_ENUMERATE);
 
     // Fetch the most recent iterator and ensure it's not NULL.
-    masm.loadPtr(AbsoluteAddress(&gen->cx->compartment->nativeIterCache.last), output);
+    masm.loadPtr(AbsoluteAddress(&gen->cx->runtime->nativeIterCache.last), output);
     masm.branchTestPtr(Assembler::Zero, output, output, ool->entry());
 
     // Load NativeIterator.
@@ -2264,7 +2264,7 @@ CodeGenerator::visitStoreFixedSlotV(LStoreFixedSlotV *ins)
 
     Address address(obj, JSObject::getFixedSlotOffset(slot));
     if (ins->mir()->needsBarrier())
-        masm.emitPreBarrier(address, JSVAL_TYPE_UNKNOWN);
+        masm.emitPreBarrier(address, MIRType_Value);
 
     masm.storeValue(value, address);
 
@@ -2286,7 +2286,7 @@ CodeGenerator::visitStoreFixedSlotT(LStoreFixedSlotT *ins)
 
     Address address(obj, JSObject::getFixedSlotOffset(slot));
     if (ins->mir()->needsBarrier())
-        masm.emitPreBarrier(address, JSVAL_TYPE_UNKNOWN);
+        masm.emitPreBarrier(address, MIRType_Value);
 
     masm.storeConstantOrRegister(nvalue, address);
 
@@ -2459,7 +2459,7 @@ CodeGenerator::visitOutOfLineBindNameCache(OutOfLineCache *ool)
 
     saveLive(ins);
 
-    typedef JSObject *(*pf)(JSContext *, size_t, JSObject *);
+    typedef JSObject *(*pf)(JSContext *, size_t, HandleObject);
     static const VMFunction BindNameCacheInfo = FunctionInfo<pf>(BindNameCache);
 
     pushArg(scopeChain);
@@ -2503,23 +2503,19 @@ CodeGenerator::visitCallSetProperty(LCallSetProperty *ins)
     ConstantOrRegister value = getSetPropertyValue(ins);
 
     const Register objReg = ToRegister(ins->getOperand(0));
+    bool isSetName = JSOp(*ins->mir()->resumePoint()->pc()) == JSOP_SETNAME;
+
+    pushArg(Imm32(isSetName));
+    pushArg(Imm32(ins->mir()->strict()));
 
     pushArg(value);
     pushArg(ImmGCPtr(ins->mir()->atom()));
     pushArg(objReg);
 
-    typedef bool (*pf)(JSContext *, JSObject *, JSAtom *, const Value &);
-    if (ins->mir()->strict()) {
-        static const VMFunction info = FunctionInfo<pf>(SetProperty<true>);
-        if (!callVM(info, ins))
-            return false;
-    } else {
-        static const VMFunction info = FunctionInfo<pf>(SetProperty<false>);
-        if (!callVM(info, ins))
-            return false;
-    }
+    typedef bool (*pf)(JSContext *, HandleObject, JSAtom *, const HandleValue, bool, bool);
+    static const VMFunction info = FunctionInfo<pf>(SetProperty);
 
-    return true;
+    return callVM(info, ins);
 }
 
 bool
@@ -2556,14 +2552,16 @@ CodeGenerator::visitOutOfLineSetPropertyCache(OutOfLineCache *ool)
                               mir->strict());
 
     size_t cacheIndex = allocateCache(cache);
+    bool isSetName = JSOp(*mir->resumePoint()->pc()) == JSOP_SETNAME;
 
     saveLive(ins);
 
+    pushArg(Imm32(isSetName));
     pushArg(value);
     pushArg(objReg);
     pushArg(Imm32(cacheIndex));
 
-    typedef bool (*pf)(JSContext *, size_t, JSObject *, const Value&);
+    typedef bool (*pf)(JSContext *, size_t, HandleObject, HandleValue, bool);
     static const VMFunction info = FunctionInfo<pf>(ion::SetPropertyCache);
 
     if (!callVM(info, ool->cache()))

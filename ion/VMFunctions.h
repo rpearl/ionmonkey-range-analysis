@@ -191,6 +191,7 @@ template <> struct TypeToDataType<HandleObject> { static const DataType result =
 template <> struct TypeToDataType<HandleString> { static const DataType result = Type_Handle; };
 template <> struct TypeToDataType<HandlePropertyName> { static const DataType result = Type_Handle; };
 template <> struct TypeToDataType<HandleFunction> { static const DataType result = Type_Handle; };
+template <> struct TypeToDataType<HandleValue> { static const DataType result = Type_Handle; };
 
 // Convert argument types to properties of the argument known by the jit.
 template <class T> struct TypeToArgProperties {
@@ -212,6 +213,9 @@ template <> struct TypeToArgProperties<HandlePropertyName> {
 template <> struct TypeToArgProperties<HandleFunction> {
     static const uint32 result = TypeToArgProperties<JSFunction *>::result | VMFunction::ByRef;
 };
+template <> struct TypeToArgProperties<HandleValue> {
+    static const uint32 result = TypeToArgProperties<Value>::result | VMFunction::ByRef;
+};
 
 template <class> struct OutParamToDataType { static const DataType result = Type_Void; };
 template <> struct OutParamToDataType<Value *> { static const DataType result = Type_Value; };
@@ -222,6 +226,7 @@ template <> struct OutParamToDataType<uint32_t *> { static const DataType result
 #define FOR_EACH_ARGS_2(Macro, Sep, Last) FOR_EACH_ARGS_1(Macro, Sep, Sep) Macro(2) Last(2)
 #define FOR_EACH_ARGS_3(Macro, Sep, Last) FOR_EACH_ARGS_2(Macro, Sep, Sep) Macro(3) Last(3)
 #define FOR_EACH_ARGS_4(Macro, Sep, Last) FOR_EACH_ARGS_3(Macro, Sep, Sep) Macro(4) Last(4)
+#define FOR_EACH_ARGS_5(Macro, Sep, Last) FOR_EACH_ARGS_4(Macro, Sep, Sep) Macro(5) Last(5)
 
 #define COMPUTE_INDEX(NbArg) NbArg
 #define COMPUTE_OUTPARAM_RESULT(NbArg) OutParamToDataType<A ## NbArg>::result
@@ -303,8 +308,15 @@ struct FunctionInfo<R (*)(JSContext *, A1, A2, A3, A4)> : public VMFunction {
     FUNCTION_INFO_STRUCT_BODY(FOR_EACH_ARGS_4);
 };
 
+template <class R, class A1, class A2, class A3, class A4, class A5>
+    struct FunctionInfo<R (*)(JSContext *, A1, A2, A3, A4, A5)> : public VMFunction {
+    typedef R (*pf)(JSContext *, A1, A2, A3, A4, A5);
+    FUNCTION_INFO_STRUCT_BODY(FOR_EACH_ARGS_5);
+};
+
 #undef FUNCTION_INFO_STRUCT_BODY
 
+#undef FOR_EACH_ARGS_5
 #undef FOR_EACH_ARGS_4
 #undef FOR_EACH_ARGS_3
 #undef FOR_EACH_ARGS_2
@@ -366,6 +378,9 @@ JSObject *NewInitObject(JSContext *cx, HandleObject baseObj, types::TypeObject *
 bool ArrayPopDense(JSContext *cx, JSObject *obj, Value *rval);
 bool ArrayPushDense(JSContext *cx, JSObject *obj, const Value &v, uint32_t *length);
 bool ArrayShiftDense(JSContext *cx, JSObject *obj, Value *rval);
+
+bool SetProperty(JSContext *cx, HandleObject obj, JSAtom *atom, HandleValue value,
+                 bool strict, bool isSetName);
 
 } // namespace ion
 } // namespace js
